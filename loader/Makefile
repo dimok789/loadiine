@@ -29,6 +29,7 @@ SFLAGS := -mgekko -mregnames
 # optimizing to -Os gives still disc error on some games like mario kart 8 and mario maker (even though they dont work anyway)
 # gotta check what else the compiler is optimizing (memory realignment?)
 # so for now i reverted it as there is still enough space in payload
+# adding it back in will give another 600 - 1000 bytes of space
 # CFLAGS := -Os -nostdinc -nostdlib -Wall -x c -std=gnu99
 CFLAGS := -O0 -nostdinc -nostdlib -Wall -x c -std=gnu99 \
           -ffreestanding \

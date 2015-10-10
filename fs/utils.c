@@ -103,12 +103,12 @@ void log_string(int sock, const char* str, char flag_byte) {
         *(int *)(buffer + 1) = len_str;
         for (i = 0; i < len_str; i++)
             buffer[5 + i] = str[i];
-		
+
         buffer[5 + i] = 0;
-        
+
         sendwait(sock, buffer, 1 + 4 + len_str);
     }
-    
+
     bss.lock = 0;
 }
 

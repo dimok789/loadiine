@@ -21,7 +21,7 @@ void LOADER_Start(void)
         :
         :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
     );
-	
+
     // Reset flags
     *(volatile unsigned int *)(BOUNCE_FLAG_ADDR) = 0;         // Bounce flag off
     *(volatile unsigned int *)(IS_ACTIVE_ADDR) = 0;           // replacement off
@@ -106,7 +106,7 @@ void LOADER_Prep(void)
 
             if (len != (len2 - 4))
                 continue;
-            
+
             int found = 1;
             for (int x = 0; x < len; x++)
             {
@@ -150,19 +150,19 @@ void LiLoadRPLBasics_in_1_load(void)
     );
 
     // If we are in Smash Bros app
-    if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME) 
+    if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME)
     {
         // Check if it is an rpx, look for rpx name, if it is rpl, it is already marked
         int interested = 0;
         int is_rpx = 0;
         int entry = 0;
-        
+
         // Check if rpl is already marked
         if (*(volatile unsigned int *)(RPL_REPLACE_ADDR) == 1)
         {
             interested = 1;
             entry = *(volatile unsigned int *)(RPL_ENTRY_INDEX_ADDR);
-            
+
             // Restore original instruction after LiWaitOneChunk
             *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK_AFTER_ADDR)) = 0x7c7f1b79; // mr. r31, r3
         }
@@ -194,7 +194,7 @@ void LiLoadRPLBasics_in_1_load(void)
             {
                 // truncate size
                 size = 0x400000;
-                
+
                 // Patch the loader instruction after LiWaitOneChunk (in GetNextBounce)
                 *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER_ADDR)) = 0x60000000; // nop
             }
@@ -262,12 +262,12 @@ void LiSetupOneRPL_after(void)
         :
         :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
     );
-	
+
     // Do our stuff
-    if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME) 
+    if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME)
     {
         *(volatile unsigned int *)(IS_ACTIVE_ADDR) = 0; // Set as inactive
-        
+
         // Restore original instruction after LiWaitOneChunk (in GetNextBounce)
         *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER_ADDR)) = 0x408200c0; // bne loc_100B7AC
     }
@@ -297,7 +297,7 @@ void GetNextBounce_1(void)
         :
         :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
     );
-	
+
     // If it is active
     int is_active = *(volatile unsigned int *)(IS_ACTIVE_ADDR);
     if (is_active)
@@ -341,7 +341,7 @@ void GetNextBounce_2(void)
         :
         :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
     );
-	
+
     // If we are in smash bros app
     int is_active = *(volatile unsigned int *)(IS_ACTIVE_ADDR);
     if (is_active)

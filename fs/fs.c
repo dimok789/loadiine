@@ -38,7 +38,7 @@ static int is_gamefile(char *path) {
     // In case the path starts by "//" and not "/" (some games do that ... ...)
     if (path[0] == '/' && path[1] == '/')
         path = &path[1];
-	
+
     // In case the path does not start with "/" (some games do that too ...)
 	int len = 0;
 	char new_path[16];
@@ -46,7 +46,7 @@ static int is_gamefile(char *path) {
 		new_path[0] = '/';
 		len++;
 	}
-	
+
 	while(*path && len < sizeof(new_path)) {
 		new_path[len++] = *path++;
 	}
@@ -68,7 +68,7 @@ static int is_gamefile(char *path) {
     return 1;
 }
 static int is_savefile(char *path) {
-    
+
     // In case the path starts by "//" and not "/" (some games do that ... ...)
     if (path[0] == '/' && path[1] == '/')
         path = &path[1];
@@ -80,11 +80,11 @@ static int is_savefile(char *path) {
 		new_path[0] = '/';
 		len++;
 	}
-	
+
 	while(*path && len < sizeof(new_path)) {
 		new_path[len++] = *path++;
 	}
-	
+
     if (new_path[0]  != '/') return 0;
 //    if (new_path[1]  != 'v' && new_path[1] != 'V') return 0;
 //    if (new_path[2]  != 'o') return 0;
@@ -104,7 +104,7 @@ static void compute_new_path(char* new_path, char* path, int len, int is_save) {
     // In case the path starts by "//" and not "/" (some games do that ... ...)
     if (path[0] == '/' && path[1] == '/')
         path = &path[1];
-	
+
     // In case the path does not start with "/" set an offset for all the accesses
 	if(path[0] != '/')
 		path_offset = -1;
@@ -162,7 +162,7 @@ static void compute_new_path(char* new_path, char* path, int len, int is_save) {
 }
 
 static int GetCurClient(void *pClient, void *pCmd) {
-    
+
     if ((int)bss_ptr != 0x0a000000) {
         int client = client_num(pClient);
         if (client >= 0) {
@@ -221,7 +221,7 @@ DECL(int, FSInit, void) {
         bss.mount_base[i++] = 'e';
         bss.mount_base[i++] = 's';
         bss.mount_base[i++] = '/';
-		
+
 		// TODO: check length of mount_base, but in case its too long it will hang anyway
 		char *game_name_ptr = (char *)GAME_DIR_NAME;
 		while(*game_name_ptr) {
@@ -236,7 +236,7 @@ DECL(int, FSInit, void) {
         bss.mount_base[i++] = 'n';
         bss.mount_base[i++] = 't';
 		bss.mount_base[i++] = '\0';
-		
+
         // set save base
         for (i = 0; i < 20; i++)
             bss.save_base[i] = bss.mount_base[i];
@@ -248,14 +248,14 @@ DECL(int, FSInit, void) {
         bss.save_base[i++] = 'e';
         bss.save_base[i++] = 's';
         bss.save_base[i++] = '/';
-		
+
 		// TODO: check length of save_base, but in case its too long it will hang anyway
-		game_name_ptr = (volatile char *)GAME_DIR_NAME;
+		game_name_ptr = (char *)GAME_DIR_NAME;
 		while(*game_name_ptr) {
 			bss.save_base[i++] = *game_name_ptr++;
 		}
 		bss.save_base[i++] = '\0';
-		
+
         // in case there is no game selected
 //        if (bss.mount_base[16] == 0) { bss.mount_base[16] = '0'; bss.save_base[21] = '0'; }
 //        if (bss.mount_base[17] == 0) { bss.mount_base[17] = '0'; bss.save_base[22] = '0'; }
@@ -296,7 +296,7 @@ DECL(int, FSDelClient, void *pClient) {
 }
 
 // TODO: make new_path dynamically allocated from heap and not on stack to avoid stack overflow on too long names
-// int len = strlen(path) + (is_save ? (strlen(bss.save_base) + 2) : strlen(bss.mount_base));
+// int len = strlen(path) + (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
 /* *****************************************************************************
  * Replacement functions
  * ****************************************************************************/
@@ -309,8 +309,8 @@ DECL(int, FSGetStat, void *pClient, void *pCmd, char *path, void *stats, int err
         // change path if it is a game file
         int is_save = 0;
         if (is_gamefile(path) || (is_save = is_savefile(path))) {
-            int len = strlen(path);
-            char new_path[len + 255 + 1];
+            int len = strlen(path) + (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
+            char new_path[len + 1];
             compute_new_path(new_path, path, len, is_save);
 
             // return function with new_path if path exists
@@ -334,8 +334,8 @@ DECL(int, FSGetStatAsync, void *pClient, void *pCmd, char *path, void *stats, in
         // change path if it is a game/save file
         int is_save = 0;
         if (is_gamefile(path) || (is_save = is_savefile(path))) {
-            int len = strlen(path);
-            char new_path[len + 255 + 1];			
+            int len = strlen(path) + (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
+            char new_path[len + 1];
             compute_new_path(new_path, path, len, is_save);
 
             // return function with new_path if path exists
@@ -359,8 +359,8 @@ DECL(int, FSOpenFile, void *pClient, void *pCmd, char *path, char *mode, int *ha
         // change path if it is a game file
         int is_save = 0;
         if (is_gamefile(path) || (is_save = is_savefile(path))) {
-            int len = strlen(path);
-            char new_path[len + 255 + 1];
+            int len = strlen(path) + (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
+            char new_path[len + 1];
             compute_new_path(new_path, path, len, is_save);
 
             // return function with new_path if path exists
@@ -390,8 +390,8 @@ DECL(int, FSOpenFileAsync, void *pClient, void *pCmd, char *path, char *mode, in
         // change path if it is a game file
         int is_save = 0;
         if (is_gamefile(path) || (is_save = is_savefile(path))) {
-            int len = strlen(path);
-            char new_path[len + 255 + 1];
+            int len = strlen(path) + (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
+            char new_path[len + 1];
             compute_new_path(new_path, path, len, is_save);
 
             // return function with new_path if path exists
@@ -420,8 +420,8 @@ DECL(int, FSOpenDir, void *pClient, void* pCmd, char *path, int *handle, int err
         // change path if it is a game folder
         int is_save = 0;
         if (is_gamefile(path) || (is_save = is_savefile(path))) {
-            int len = strlen(path);
-            char new_path[len + 255 + 1];
+            int len = strlen(path) + (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
+            char new_path[len + 1];
             compute_new_path(new_path, path, len, is_save);
 
             // return function with new_path if path exists
@@ -445,8 +445,8 @@ DECL(int, FSOpenDirAsync, void *pClient, void* pCmd, char *path, int *handle, in
         // change path if it is a game folder
         int is_save = 0;
         if (is_gamefile(path) || (is_save = is_savefile(path))) {
-            int len = strlen(path);
-            char new_path[len + 255 + 1];
+            int len = strlen(path) + (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
+            char new_path[len + 1];
             compute_new_path(new_path, path, len, is_save);
 
             // return function with new_path if path exists
@@ -470,8 +470,8 @@ DECL(int, FSChangeDir, void *pClient, void *pCmd, char *path, int error) {
         // change path if it is a game folder
         int is_save = 0;
         if (is_gamefile(path) || (is_save = is_savefile(path))) {
-            int len = strlen(path);
-            char new_path[len + 255 + 1];
+            int len = strlen(path) + (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
+            char new_path[len + 1];
             compute_new_path(new_path, path, len, is_save);
 
             // return function with new_path if path exists
@@ -495,8 +495,8 @@ DECL(int, FSChangeDirAsync, void *pClient, void *pCmd, char *path, int error, FS
         // change path if it is a game folder
         int is_save = 0;
         if (is_gamefile(path) || (is_save = is_savefile(path))) {
-            int len = strlen(path);
-            char new_path[len + 255 + 1];
+            int len = strlen(path) + (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
+            char new_path[len + 1];
             compute_new_path(new_path, path, len, is_save);
 
             // return function with new_path if path exists
@@ -520,8 +520,8 @@ DECL(int, FSMakeDir, void *pClient, void *pCmd, char *path, int error) {
 
         // change path if it is a save folder
         if (is_savefile(path)) {
-            int len = strlen(path);
-            char new_path[len + 255 + 1];
+            int len = strlen(path) + (strlen(bss.save_base) + 8);
+            char new_path[len + 1];
             compute_new_path(new_path, path, len, 1);
 
             // log new path
@@ -542,8 +542,8 @@ DECL(int, FSMakeDirAsync, void *pClient, void *pCmd, char *path, int error, FSAs
 
         // change path if it is a save folder
         if (is_savefile(path)) {
-            int len = strlen(path);
-            char new_path[len + 255 + 1];
+            int len = strlen(path) + (strlen(bss.save_base) + 8);
+            char new_path[len + 1];
             compute_new_path(new_path, path, len, 1);
 
             // log new path
@@ -566,13 +566,13 @@ DECL(int, FSRename, void *pClient, void *pCmd, char *oldPath, char *newPath, int
         // change path if it is a save folder
         if (is_savefile(oldPath)) {
             // old path
-            int len_old = strlen(oldPath);
-            char new_old_path[len_old + 255 + 1];
+            int len_old = strlen(oldPath) + (strlen(bss.save_base) + 8);
+            char new_old_path[len_old + 1];
             compute_new_path(new_old_path, oldPath, len_old, 1);
 
             // new path
-            int len_new = strlen(newPath);
-            char new_new_path[len_new + 255 + 1];
+            int len_new = strlen(newPath) + (strlen(bss.save_base) + 8);
+            char new_new_path[len_new + 1];
             compute_new_path(new_new_path, newPath, len_new, 1);
 
             // log new path
@@ -596,13 +596,13 @@ DECL(int, FSRenameAsync, void *pClient, void *pCmd, char *oldPath, char *newPath
         // change path if it is a save folder
         if (is_savefile(oldPath)) {
             // old path
-            int len_old = strlen(oldPath);
-            char new_old_path[len_old + 255 + 1];
+            int len_old = strlen(oldPath) + (strlen(bss.save_base) + 8);
+            char new_old_path[len_old + 1];
             compute_new_path(new_old_path, oldPath, len_old, 1);
 
             // new path
-            int len_new = strlen(newPath);
-            char new_new_path[len_new + 255 + 1];
+            int len_new = strlen(newPath) + (strlen(bss.save_base) + 8);
+            char new_new_path[len_new + 1];
             compute_new_path(new_new_path, newPath, len_new, 1);
 
             // log new path
@@ -624,8 +624,8 @@ DECL(int, FSRemove, void *pClient, void *pCmd, char *path, int error) {
 
         // change path if it is a save folder
         if (is_savefile(path)) {
-            int len = strlen(path);
-            char new_path[len + 255 + 1];
+            int len = strlen(path)+ (strlen(bss.save_base) + 8);
+            char new_path[len + 1];
             compute_new_path(new_path, path, len, 1);
 
             // log new path
@@ -646,8 +646,8 @@ DECL(int, FSRemoveAsync, void *pClient, void *pCmd, char *path, int error, FSAsy
 
         // change path if it is a save folder
         if (is_savefile(path)) {
-            int len = strlen(path);
-            char new_path[len + 255 + 1];
+            int len = strlen(path)+ (strlen(bss.save_base) + 8);
+            char new_path[len + 1];
             compute_new_path(new_path, path, len, 1);
 
             // log new path

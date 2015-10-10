@@ -16,13 +16,13 @@ int _start(int argc, char *argv[]) {
     /* ****************************************************************** */
     /*                              MENU CHECK                            */
     /* ****************************************************************** */
-    
+
     // mii maker is our menu :), if it's another app, continue coreinit process
     if (title_id != 0x000500101004A200 && // mii maker eur
         title_id != 0x000500101004A100 && // mii maker usa
         title_id != 0x000500101004A000)   // mii maker jpn
         return main(argc, argv);
-    
+
     /* ****************************************************************** */
     /*                              Init Memory                           */
     /* ****************************************************************** */
@@ -30,13 +30,13 @@ int _start(int argc, char *argv[]) {
     char* msg           = (char*)malloc(80);
     char* mount_path    = (char*)malloc(FS_MAX_MOUNTPATH_SIZE);
     char* path          = (char*)malloc(FS_MAX_MOUNTPATH_SIZE);
-    
+
     char game_dir[MAX_GAME_COUNT][FS_MAX_ENTNAME_SIZE];
 
     /* ****************************************************************** */
     /*                              Init Screen                           */
     /* ****************************************************************** */
-    
+
     // Prepare screen
     int screen_buf0_size = 0;
     int screen_buf1_size = 0;
@@ -64,7 +64,7 @@ int _start(int argc, char *argv[]) {
     /* ****************************************************************** */
     /*                              Init SDCARD                           */
     /* ****************************************************************** */
-    
+
     int sd_status = 0;
     FSMountSource mountSrc;
     int game_dh = 0;
@@ -132,7 +132,7 @@ int _start(int argc, char *argv[]) {
     char buf_nb_game[15] = {'%', 'd', ' ', 'g', 'a', 'm', 'e', 's', '\0'};
     char buf_error[20] = {'C', 'a', 'n', '\'', 't', ' ', 'l', 'a', 'u', 'n', 'c', 'h', ' ', 'g', 'a', 'm', 'e', '!', '\0'};
     char buf_sel[4] = {'=', '>', '\0'};
-    
+
     uint8_t game_index = 0;
     uint8_t game_sel = 0;
     uint8_t button_pressed = 1;
@@ -226,7 +226,7 @@ int _start(int argc, char *argv[]) {
                             int is_rpx = IsRPX(&dir_entry);
                             if (is_rpx == -1)
                                 continue;
-                            
+
                             if (is_rpx)
                             {
                                 is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, path_index, 1, 0, &cur_mem_address);
@@ -247,10 +247,10 @@ int _start(int argc, char *argv[]) {
 						// copy the game name to a place we know for later
 						memcpy(GAME_DIR_NAME, game_dir[game_sel], len+1);
 						DCFlushRange(GAME_DIR_NAME, len+1);
-						
+
                         // Set ready to quit menu
                         ready = is_okay;
-                        
+
                         // Close dir
                         FSCloseDir(pClient, pCmd, game_dh, FS_RET_NO_ERROR);
                     }
@@ -284,7 +284,7 @@ int _start(int argc, char *argv[]) {
 //    {
 //        FSUnmount(pClient, pCmd, mount_path, FS_RET_NO_ERROR);
 //    }
-    
+
     /* ****************************************************************** */
     /*                           Return to app start                      */
     /* ****************************************************************** */
@@ -328,7 +328,7 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
     int len = 0;
     while (dir_entry->name[len])
         len++;
-	
+
     // Concatenate rpl filename
     path_game[path_index++] = '/';
     memcpy(&(path_game[path_index]), dir_entry->name, len);
@@ -353,7 +353,7 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
                 *(volatile unsigned char*)(*cur_mem_address + cur_size + j) = data[j];
             cur_size += ret;
         }
-		
+
         // fill rpx/rpl entry
         s_rpx_rpl rpx_rpl_data;
 		if(len > sizeof(rpx_rpl_data.name)-1) {
@@ -385,7 +385,7 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
             *(volatile unsigned int*)(RPX_NAME_PENDING) = rpx.name_full;
             *(volatile unsigned int*)(RPX_NAME) = 0;
         }
-        
+
         // close file and free memory
         FSCloseFile(pClient, pCmd, fd, FS_RET_NO_ERROR);
         free(data);
@@ -394,7 +394,7 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
         // return okay
         return 1;
     }
-    
+
     // free path
     free(path_game);
 
@@ -430,7 +430,7 @@ static void CreateGameSaveDir(FSClient *pClient, FSCmdBlock *pCmd, const char *g
    path_save[path_index] = '\0';
 
     int dir_handler = 0;
-   
+
    if (FSOpenDir(pClient, pCmd, path_save, &dir_handler, FS_RET_ALL_ERROR) == FS_STATUS_OK) {
        FSCloseDir(pClient, pCmd, dir_handler, FS_RET_NO_ERROR);
    }
@@ -443,34 +443,34 @@ static void CreateGameSaveDir(FSClient *pClient, FSCmdBlock *pCmd, const char *g
 	   path_save[path_index++] = *game_entry++;
    }
    path_save[path_index] = '\0';
-   
+
    if (FSOpenDir(pClient, pCmd, path_save, &dir_handler, FS_RET_ALL_ERROR) == FS_STATUS_OK) {
        FSCloseDir(pClient, pCmd, dir_handler, FS_RET_NO_ERROR);
    }
    else {
 	   FSMakeDir(pClient, pCmd, path_save, FS_RET_ALL_ERROR);
    }
-   
+
    // Create "_SAV/[rpx]/u" and "_SAV/[rpx]/c" folder
    path_save[path_index++] = '/';
    path_save[path_index] = 'u';
    path_save[path_index + 1] = '\0';
-   
+
    if (FSOpenDir(pClient, pCmd, path_save, &dir_handler, FS_RET_ALL_ERROR) == FS_STATUS_OK) {
        FSCloseDir(pClient, pCmd, dir_handler, FS_RET_NO_ERROR);
    }
    else {
 	   FSMakeDir(pClient, pCmd, path_save, FS_RET_ALL_ERROR);
    }
-   
+
    path_save[path_index] = 'c';
-   
+
    if (FSOpenDir(pClient, pCmd, path_save, &dir_handler, FS_RET_ALL_ERROR) == FS_STATUS_OK) {
        FSCloseDir(pClient, pCmd, dir_handler, FS_RET_NO_ERROR);
    }
    else {
 	   FSMakeDir(pClient, pCmd, path_save, FS_RET_ALL_ERROR);
    }
-   
+
    free(path_save);
 }

@@ -58,7 +58,7 @@ void start()
         InstallLoader();
         InstallFS();
     }
-    
+
     _Exit();
 }
 
@@ -98,8 +98,8 @@ static void InstallLoader(void)
     /* Patch to bypass SDK version tests */
     *((volatile uint32_t *)(0xC1000000 + 0x010095b4)) = 0x480000a0; // ble loc_1009654    (0x408100a0) => b loc_1009654      (0x480000a0)
     *((volatile uint32_t *)(0xC1000000 + 0x01009658)) = 0x480000e8; // bge loc_1009740    (0x408100a0) => b loc_1009740      (0x480000e8)
-    
-    
+
+
     /* Copy loader code in memory */
     /* - virtual address 0xA0000000 is at physical address 0x10000000 (with read/write access) */
     /* - virtual address range 0x01xxxxxx starts at physical address 0x32000000 */
@@ -146,7 +146,7 @@ static void InstallFS(void)
     if (*(volatile unsigned int *)(INSTALL_FS_DONE_ADDR + 0xC1000000) == INSTALL_FS_DONE_FLAG)
         return;
     *(volatile unsigned int *)(INSTALL_FS_DONE_ADDR + 0xC1000000) = INSTALL_FS_DONE_FLAG;
-    
+
     /* Copy fs code in memory */
     unsigned int len = sizeof(fs_text_bin);
     unsigned char *loc = (unsigned char *)((char *)INSTALL_FS_ADDR + 0xC1000000);
