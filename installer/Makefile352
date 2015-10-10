@@ -1,0 +1,37 @@
+PATH := $(DEVKITPPC)/bin:$(PATH)
+CC=powerpc-eabi-gcc
+CFLAGS=-Os -std=gnu99 -nostdinc -fno-builtin -c
+LD=powerpc-eabi-ld
+LDFLAGS=-Ttext 1800000 --oformat binary
+project	:=	.
+root:=$(CURDIR)
+build	:=	 $(root)/bin
+www :=$(root)/../../../www
+framework:=$(root)/../../../framework
+
+all: clean setup menu loader fs main532
+
+setup:
+	mkdir -p $(root)/bin/
+
+menu:
+	cd ../menu/ && make
+
+loader:
+	cd ../loader/ && make
+
+fs:
+	cd ../fs/ && make
+
+main532:
+	$(CC) $(CFLAGS) -DVER=532 $(project)/launcher.c
+	#-Wa,-a,-ad
+	cp -r $(root)/*.o $(build)
+	rm $(root)/*.o
+	$(LD) $(LDFLAGS) -s -o $(build)/code532.bin $(build)/launcher.o `find $(build) -name "*.o" ! -name "launcher.o"` -L"$(DEVKITPPC)/lib/gcc/powerpc-eabi/4.8.2" -lgcc
+
+clean:
+	cd ../menu/ && make clean
+	cd ../loader/ && make clean
+	cd ../fs/ && make clean
+	rm -rf $(build)/*
