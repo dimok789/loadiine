@@ -2,6 +2,14 @@
 #include "elf_abi.h"
 #include "../../libwiiu/src/coreinit.h"
 
+#define OSTHREAD_SIZE	0x1000
+#define OS_THREAD_ATTR_AFFINITY_NONE  0x0007u        // affinity to run on every core
+#define OS_THREAD_ATTR_AFFINITY_CORE0 0x0001u        // run only on core0
+#define OS_THREAD_ATTR_AFFINITY_CORE1 0x0002u        // run only on core1
+#define OS_THREAD_ATTR_AFFINITY_CORE2 0x0004u        // run only on core2
+#define OS_THREAD_ATTR_DETACH         0x0008u        // detached
+#define OS_THREAD_ATTR_LAST           (OS_THREAD_ATTR_DETACH | OS_THREAD_ATTR_AFFINITY_NONE)
+
 #if VER == 532
     // Includes
 //    #include "menu532.h"
@@ -9,6 +17,7 @@
 //    #include "fs532.h"
 
     // Function definitions
+	#define SYSLaunchMiiStudio ((void (*)(void))0xDEAAEB8)
     #define _Exit ((void (*)(void))0x0101cd70)
     #define OSEffectiveToPhysical ((void* (*)(const void*))0x0101f510)
     #define memcpy ((void * (*)(void * dest, const void * src, int num))0x1035a6c)
@@ -90,6 +99,7 @@ static void InstallMenu(private_data_t *private_data);
 static void InstallLoader(private_data_t *private_data);
 static void InstallFS(private_data_t *private_data);
 
+static bool _SYSLaunchMiiStudio();
 static void curl_thread_callback(int argc, void *argv);
 
 /* ****************************************************************** */
@@ -110,6 +120,8 @@ void _start()
     }
     else
     {
+		_SYSLaunchMiiStudio();
+	
         private_data_t private_data;
 
         /* Get coreinit handle and keep it in memory */
@@ -219,6 +231,38 @@ void _start()
     }
 
     _Exit();
+}
+
+static bool _SYSLaunchMiiStudio()
+{
+    /****************************>           Get Handles           <****************************/
+    unsigned int coreinit_handle;
+    OSDynLoad_Acquire("coreinit.rpl", &coreinit_handle);
+
+    /****************************>       External Prototypes       <****************************/
+    void* (*OSAllocFromSystem)(uint32_t size, int align);
+    bool (*OSCreateThread)(void *thread, void *entry, int argc, void *args, uint32_t stack, uint32_t stack_size, int32_t priority, uint16_t attr);
+    int32_t (*OSResumeThread)(void *thread);
+
+    /****************************>             Exports             <****************************/
+    OSDynLoad_FindExport(coreinit_handle, 0, "OSAllocFromSystem", &OSAllocFromSystem);
+    OSDynLoad_FindExport(coreinit_handle, 0, "OSCreateThread", &OSCreateThread);
+    OSDynLoad_FindExport(coreinit_handle, 0, "OSResumeThread", &OSResumeThread);
+
+    /* Allocate a stack for the thread */
+    uint32_t stack = (uint32_t) OSAllocFromSystem(0x1000, 0x10);
+    stack += 0x1000;
+
+    /* Create the thread */
+    void *thread = OSAllocFromSystem(OSTHREAD_SIZE, 8);
+    bool ret = OSCreateThread(thread, SYSLaunchMiiStudio, 0, null, stack, 0x1000, 0, OS_THREAD_ATTR_AFFINITY_CORE1 | OS_THREAD_ATTR_DETACH);
+    if (ret == false)
+        return false;
+
+    /* Schedule it for execution */
+    OSResumeThread(thread);
+
+    return true;
 }
 
 /* libcurl data write callback */
