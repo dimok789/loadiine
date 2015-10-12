@@ -33,25 +33,36 @@ CFLAGS := -Os -nostdinc -nostdlib -Wall -x c -std=gnu99 -nostdlib \
 SRC := $(wildcard *.S) $(wildcard *.c)
 OBJ := $(patsubst %.S,%.o,$(patsubst %.c,%.o,$(SRC)))
 
-all: ../installer/fs532.h
+# Simulate an order only dependency
+BUILD_REQ := $(filter-out $(wildcard build),build)
+BIN_REQ := $(filter-out $(wildcard bin),bin)
 
-../installer/fs%.h: fs%.text.bin fs%.magic.bin
-	xxd -i fs$*.magic.bin | sed "s/unsigned/static const unsigned/g;s/fs$*/fs/g" > $@
-	xxd -i fs$*.text.bin | sed "s/unsigned/static const unsigned/g;s/fs$*/fs/g" >> $@
+all: build/fs532.elf copy
 
-fs%.text.bin: fs%.elf
+../installer/fs%.h: build/fs%.text.bin build/fs%.magic.bin $(BIN_REQ)
+	xxd -i build/fs$*.magic.bin | sed "s/unsigned/static const unsigned/g;s/fs$*/fs/g" > $@
+	xxd -i build/fs$*.text.bin | sed "s/unsigned/static const unsigned/g;s/fs$*/fs/g" >> $@
+
+build/fs%.text.bin: build/fs%.elf $(BUILD_REQ)
 	$(OBJCOPY) -j .text -O binary $< $@
-fs%.magic.bin: fs%.elf
+build/fs%.magic.bin: build/fs%.elf $(BUILD_REQ)
 	$(OBJCOPY) -j .magic -O binary $< $@
 
-fs%.elf: fs%.ld $(OBJ)
-	$(LD) -T $< $(OBJ) -s -L"$(DEVKITPPC)/lib/gcc/powerpc-eabi/4.8.2" -lgcc
+build/fs%.elf: fs%.ld $(OBJ) $(BUILD_REQ)
+	$(LD) -o $@ -T $< $(OBJ) -s -L"$(DEVKITPPC)/lib/gcc/powerpc-eabi/4.8.2" -lgcc
 
-%.o: %.c
+build/%.o: %.c $(BUILD_REQ)
 	$(CC) -c $(CFLAGS) -o $@ $+
-%.o: %.S
+build/%.o: %.S $(BUILD_REQ)
 	$(AS) $(SFLAGS) -o $@ $+
 
-clean:
-	rm -f $(wildcard *.o) $(wildcard *.elf) $(wildcard ../installer/fs532.h)
+bin:
+	mkdir $@
+build:
+	mkdir $@
 
+copy:
+	cp build/fs532.elf ../installer/bin/
+
+clean:
+	rm -rf $(wildcard build) $(wildcard bin) $(wildcard ../installer/fs532.h)

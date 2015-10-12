@@ -1,6 +1,6 @@
 PATH := $(DEVKITPPC)/bin:$(PATH)
 CC=powerpc-eabi-gcc
-CFLAGS=-Os -std=gnu99 -nostdinc -fno-builtin -c
+CFLAGS=-std=gnu99 -nostdinc -fno-builtin -c
 LD=powerpc-eabi-ld
 LDFLAGS=-Ttext 1800000 --oformat binary
 project	:=	.
@@ -28,10 +28,10 @@ main532:
 	#-Wa,-a,-ad
 	cp -r $(root)/*.o $(build)
 	rm $(root)/*.o
-	$(LD) $(LDFLAGS) -s -o $(build)/code532.bin $(build)/launcher.o `find $(build) -name "*.o" ! -name "launcher.o"` -L"$(DEVKITPPC)/lib/gcc/powerpc-eabi/4.8.2" -lgcc
+	$(LD) $(LDFLAGS) -s -o $(build)/code532.bin $(build)/launcher.o `find $(build) -name "*.o" ! -name "launcher.o"`
 
 clean:
-	cd ../menu/ && make clean
-	cd ../loader/ && make clean
-	cd ../fs/ && make clean
-	rm -rf $(build)/*
+	make -C ../menu/ clean
+	make -C ../loader/ clean
+	make -C ../fs/ clean
+	rm -rf $(build)

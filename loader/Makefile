@@ -44,7 +44,7 @@ OBJ := $(patsubst %.S,build/%.o,$(patsubst %.c,build/%.o,$(SRC)))
 BUILD_REQ := $(filter-out $(wildcard build),build)
 BIN_REQ := $(filter-out $(wildcard bin),bin)
 
-all: bin/loader532.h copy
+all: build/loader532.elf copy
 
 bin/loader%.h: build/loader%.text.bin build/loader%.magic.bin $(BIN_REQ)
 	xxd -i build/loader$*.magic.bin | sed "s/unsigned/static const unsigned/g;s/loader$*/loader/g;s/build_//g" > $@
@@ -70,8 +70,7 @@ build:
 	mkdir $@
 
 copy:
-	cp bin/loader532.h ../installer/
-#	cp -rf build/ build2/ # only for debuging asm with objdump, delete me
+	cp build/loader532.elf ../installer/bin/
 
 clean:
 	rm -rf $(wildcard build) $(wildcard bin) $(wildcard ../installer/loader532.h)
