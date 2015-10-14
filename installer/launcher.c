@@ -512,30 +512,10 @@ static void InstallLoader(private_data_t *private_data)
 /* ****************************************************************** */
 static void InstallFS(private_data_t *private_data)
 {
-    /* Check if already installed */
+	 /* Check if already installed */
     if (*(volatile unsigned int *)(INSTALL_FS_DONE_ADDR + 0xC1000000) == INSTALL_FS_DONE_FLAG)
         return;
-    *(volatile unsigned int *)(INSTALL_FS_DONE_ADDR + 0xC1000000) = INSTALL_FS_DONE_FLAG;
-
-    // get .text section
-    unsigned int fs_text_bin_len = 0;
-    int section_offset = get_section(private_data, private_data->data_fs, ELF_TEXT, &fs_text_bin_len);
-    unsigned char *fs_text_bin = private_data->data_fs + section_offset;
-    // get .magic section
-    unsigned int fs_magic_bin_len = 0;
-    section_offset = get_section(private_data, private_data->data_fs, ".magic", &fs_magic_bin_len);
-    unsigned char *fs_magic_bin = private_data->data_fs + section_offset;
-
-    /* Copy fs code in memory */
-    unsigned int len = fs_text_bin_len;
-    unsigned char *loc = (unsigned char *)((char *)INSTALL_FS_ADDR + 0xC1000000);
-
-    while (len--) {
-        loc[len] = fs_text_bin[len];
-    }
-	
-	/************************************************************************/
-	
+   	/************************************************************************/
 	// Prepare screen
 	void (*OSScreenInit)();
 	unsigned int (*OSScreenGetBufferSizeEx)(unsigned int bufferNum);
@@ -656,8 +636,28 @@ static void InstallFS(private_data_t *private_data)
 		// Button pressed ?
 		button_pressed = (vpad_data.btn_hold & BTN_PRESSED) ? 1 : 0;
 	}
-
 	
+	
+	//set that is was already installed
+    *(volatile unsigned int *)(INSTALL_FS_DONE_ADDR + 0xC1000000) = INSTALL_FS_DONE_FLAG;
+
+    // get .text section
+    unsigned int fs_text_bin_len = 0;
+    int section_offset = get_section(private_data, private_data->data_fs, ELF_TEXT, &fs_text_bin_len);
+    unsigned char *fs_text_bin = private_data->data_fs + section_offset;
+    // get .magic section
+    unsigned int fs_magic_bin_len = 0;
+    section_offset = get_section(private_data, private_data->data_fs, ".magic", &fs_magic_bin_len);
+    unsigned char *fs_magic_bin = private_data->data_fs + section_offset;
+
+    /* Copy fs code in memory */
+    unsigned int len = fs_text_bin_len;
+    unsigned char *loc = (unsigned char *)((char *)INSTALL_FS_ADDR + 0xC1000000);
+
+    while (len--) {
+        loc[len] = fs_text_bin[len];
+    }
+		
 	/* server IP address */
 	if(!noip){		
 		((unsigned int *)loc)[0] = ip.full; //PC_IP;
