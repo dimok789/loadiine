@@ -1,6 +1,7 @@
 #include "launcher.h"
 #include "elf_abi.h"
 #include "../../libwiiu/src/coreinit.h"
+#include "../../libwiiu/src/vpad.h"
 
 #if VER == 532
     // Includes
@@ -24,13 +25,21 @@
     #define INSTALL_FS_DONE_ADDR        (INSTALL_FS_ADDR - 0x4) // Used to know if fs is already installed
     #define INSTALL_FS_DONE_FLAG        0xCACACACA
 
-    // IP settings // TODO: add an option in the menu to choose if we want to use the server and then set the IP
-    #define USE_SERVER                  1
-//    #define SERVER_IP                   0x0A00000E
-//    #define SERVER_IP                   0xC0A8BC14
-//    #define SERVER_IP                   0xC0A80102
-    #define SERVER_IP                   0xC0A8B203
+    // IP settings //
+	#define DEFAULT_SERVER_IP   0xC0A80102
+
 #endif
+
+#define PRINT_TEXT1(x, y, str) { OSScreenPutFontEx(1, x, y, str); }
+#define PRINT_TEXT2(x, y, _fmt, ...) { __os_snprintf(msg, 80, _fmt, __VA_ARGS__); OSScreenPutFontEx(1, x, y, msg); }
+#define BTN_PRESSED (BUTTON_LEFT | BUTTON_RIGHT | BUTTON_UP | BUTTON_DOWN)
+
+
+typedef union u_serv_ip
+{
+    uint8_t  digit[4];
+    uint32_t full;
+} u_serv_ip;
 
 typedef struct {
     char tag[8];                     /* 0x000 "OSContxt" */
@@ -110,9 +119,9 @@ void _start()
     }
     else
     {
-        private_data_t private_data;
-
-        /* Get coreinit handle and keep it in memory */
+		private_data_t private_data;
+      
+		/* Get coreinit handle and keep it in memory */
         unsigned int coreinit_handle;
         OSDynLoad_Acquire("coreinit", &coreinit_handle);
         private_data.coreinit_handle = coreinit_handle;
@@ -217,7 +226,6 @@ void _start()
             private_data.MEMFreeToDefaultHeap(private_data.data_fs);
         }
     }
-
     _Exit();
 }
 
@@ -525,14 +533,138 @@ static void InstallFS(private_data_t *private_data)
     while (len--) {
         loc[len] = fs_text_bin[len];
     }
+	
+	/************************************************************************/
+	
+	// Prepare screen
+	void (*OSScreenInit)();
+	unsigned int (*OSScreenGetBufferSizeEx)(unsigned int bufferNum);
+	unsigned int (*OSScreenSetBufferEx)(unsigned int bufferNum, void * addr);
+	unsigned int (*OSScreenClearBufferEx)(unsigned int bufferNum, unsigned int temp);
+	unsigned int (*OSScreenFlipBuffersEx)(unsigned int bufferNum);
+	unsigned int (*OSScreenPutFontEx)(unsigned int bufferNum, unsigned int posX, unsigned int posY, void * buffer);
+	
+	unsigned int coreinit_handle;
+	OSDynLoad_Acquire("coreinit.rpl", &coreinit_handle);
+	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenInit", &OSScreenInit);
+	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenGetBufferSizeEx", &OSScreenGetBufferSizeEx);
+	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenSetBufferEx", &OSScreenSetBufferEx);
+	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenClearBufferEx", &OSScreenClearBufferEx);
+	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenFlipBuffersEx", &OSScreenFlipBuffersEx);
+	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenPutFontEx", &OSScreenPutFontEx);
 
-    /* server IP address */
-#if (USE_SERVER == 1)
-    *((volatile unsigned int *)loc) = SERVER_IP;
-#else
-    *((volatile unsigned int *)loc) = 0;
-#endif
+	
+	/* ****************************************************************** */
+	/*                             IP Settings                            */
+	/* ****************************************************************** */
 
+	// Set server ip
+	u_serv_ip ip;
+	ip.full = DEFAULT_SERVER_IP;
+	char msg[80];
+    // Prepare screen
+    int screen_buf0_size = 0;
+    int screen_buf1_size = 0;
+    uint screen_color = 0; // (r << 24) | (g << 16) | (b << 8) | a;
+
+    // Init screen and screen buffers
+    OSScreenInit();
+    screen_buf0_size = OSScreenGetBufferSizeEx(0);
+    screen_buf1_size = OSScreenGetBufferSizeEx(1);
+    OSScreenSetBufferEx(0, (void *)0xF4000000);
+    OSScreenSetBufferEx(1, (void *)0xF4000000 + screen_buf0_size);
+
+    // Clear screens
+    OSScreenClearBufferEx(0, screen_color);
+    OSScreenClearBufferEx(1, screen_color);
+
+    // Flush the cache
+    DCFlushRange((void *)0xF4000000, screen_buf0_size);
+    DCFlushRange((void *)0xF4000000 + screen_buf0_size, screen_buf1_size);
+
+    // Flip buffers
+    OSScreenFlipBuffersEx(0);
+    OSScreenFlipBuffersEx(1);
+
+	
+	// Prepare vpad
+	unsigned int vpad_handle;
+	int (*VPADRead)(int controller, VPADData *buffer, unsigned int num, int *error);
+	OSDynLoad_Acquire("vpad.rpl", &vpad_handle);
+	OSDynLoad_FindExport(vpad_handle, 0, "VPADRead", &VPADRead);
+
+	// Set server ip with buttons
+	uint8_t sel_ip = 3;
+	int error;
+	uint8_t button_pressed = 1;
+	VPADData vpad_data;
+	VPADRead(0, &vpad_data, 1, &error); //Read initial vpad status
+	int noip = 1;
+	while (1)
+	{
+		// Refresh screen if needed
+		if (button_pressed) { OSScreenFlipBuffersEx(1); OSScreenClearBufferEx(1, 0); }
+
+		// Print message
+		PRINT_TEXT1(24, 1, "-- LOADIINE --");
+		PRINT_TEXT1(0, 5, "1. Press A to install loadiine");
+		
+		PRINT_TEXT1(0, 11, "2    (optional)");
+		PRINT_TEXT2(0, 12, "%s : %3d.%3d.%3d.%3d", "  a. Server IP", ip.digit[0], ip.digit[1], ip.digit[2], ip.digit[3]);	
+		PRINT_TEXT1(0, 13, "  b. Press X to install loadiine with server settings");
+		PRINT_TEXT1(42, 17, "home button to exit ...");
+		
+		// Print ip digit selector
+		uint8_t x_shift = 17 + 4 * sel_ip;
+		PRINT_TEXT1(x_shift, 11, "vvv");
+
+
+		// Read vpad
+		VPADRead(0, &vpad_data, 1, &error);
+
+		// Update screen
+		if (button_pressed)
+		{
+			OSScreenFlipBuffersEx(1);
+			OSScreenClearBufferEx(1, 0);
+		}
+		// Check for buttons
+		else
+		{
+			// Home Button
+			if (vpad_data.btn_hold & BUTTON_HOME)
+				goto quit;
+
+			// A Button
+			if (vpad_data.btn_hold & BUTTON_A)
+				break;
+				
+			// A Button
+			if (vpad_data.btn_hold & BUTTON_X){
+				noip = 0;
+				break;
+			}
+			// Left/Right Buttons
+			if (vpad_data.btn_hold & BUTTON_LEFT ) sel_ip = !sel_ip ? sel_ip = 3 : --sel_ip;
+			if (vpad_data.btn_hold & BUTTON_RIGHT) sel_ip = ++sel_ip % 4;
+
+			// Up/Down Buttons
+			if (vpad_data.btn_hold & BUTTON_UP  ) ip.digit[sel_ip] = ++ip.digit[sel_ip];
+			if (vpad_data.btn_hold & BUTTON_DOWN) ip.digit[sel_ip] = --ip.digit[sel_ip];
+		}
+
+		// Button pressed ?
+		button_pressed = (vpad_data.btn_hold & BTN_PRESSED) ? 1 : 0;
+	}
+
+	
+	/* server IP address */
+	if(!noip){		
+		((unsigned int *)loc)[0] = ip.full; //PC_IP;
+	}else{
+		*((volatile unsigned int *)loc) = 0;
+	}
+	
     DCFlushRange((void*)loc, fs_text_bin_len);
     ICInvalidateRange((void*)loc, fs_text_bin_len);
 
@@ -568,4 +700,6 @@ static void InstallFS(private_data_t *private_data)
         DCFlushRange((int *)(0xC1000000 + real_addr), 4);
         ICInvalidateRange((int *)(0xC1000000 + real_addr), 4);
     }
+	quit:
+    _Exit();
 }
