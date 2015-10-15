@@ -1,0 +1,10 @@
+
+Paths:
+
+* /sd/wiiu/games/any name of game/code -> this path holds the RPX and RPL files. You dont need 4 ID RPX you can copy it directly from the decrypter.
+* /sd/wiiu/games/any name of game/content -> this path holds the game files, content
+* /sd/wiiu/saves/any name of game/c -> save game path (automatically created)
+* /sd/wiiu/saves/any name of game/u -> save game path (automatically created)
+
+Needs a new server version with added some debug informations (at least v1.1):
+https://github.com/Maschell/loadiine_server

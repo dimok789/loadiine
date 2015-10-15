@@ -591,7 +591,7 @@ static void InstallFS(private_data_t *private_data)
 		
 		PRINT_TEXT1(0, 11, "2    (optional)");
 		PRINT_TEXT2(0, 12, "%s : %3d.%3d.%3d.%3d", "  a. Server IP", ip.digit[0], ip.digit[1], ip.digit[2], ip.digit[3]);	
-		PRINT_TEXT1(0, 13, "  b. Press X to install loadiine with server settings");
+		PRINT_TEXT1(0, 13, "  b. Press X to install loadiine with server settings (version 1.1)");
 		PRINT_TEXT1(42, 17, "home button to exit ...");
 		
 		// Print ip digit selector
