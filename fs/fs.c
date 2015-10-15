@@ -10,6 +10,11 @@ static int client_num_alloc(void *pClient) {
     int i;
 
     for (i = 0; i < MAX_CLIENT; i++)
+        if (bss.pClient_fs[i] == pClient) {
+            return i;
+        }
+
+    for (i = 0; i < MAX_CLIENT; i++)
         if (bss.pClient_fs[i] == 0) {
             bss.pClient_fs[i] = pClient;
             return i;
@@ -18,6 +23,7 @@ static int client_num_alloc(void *pClient) {
 }
 static void client_num_free(int client) {
     bss.pClient_fs[client] = 0;
+    bss.sd_mount[client] = 0;
 }
 static int client_num(void *pClient) {
     int i;
@@ -313,14 +319,10 @@ DECL(int, FSGetStat, void *pClient, void *pCmd, char *path, void *stats, int err
             int len_base = (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
             char new_path[len + len_base + 1];
             compute_new_path(new_path, path, len, is_save);
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
 
             // return function with new_path if path exists
-            int ret = real_FSGetStat(pClient, pCmd, new_path, stats, -1);
-            if (ret == 0) {
-                // log new path
-                log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
-                return ret;
-            }
+            return real_FSGetStat(pClient, pCmd, new_path, stats, error);
         }
     }
     return real_FSGetStat(pClient, pCmd, path, stats, error);
@@ -339,14 +341,9 @@ DECL(int, FSGetStatAsync, void *pClient, void *pCmd, char *path, void *stats, in
             int len_base = (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
             char new_path[len + len_base + 1];
             compute_new_path(new_path, path, len, is_save);
-
-            // return function with new_path if path exists
-            int tmp_stats[25];
-            if (real_FSGetStat(pClient, pCmd, new_path, &tmp_stats, -1) == 0) {
-                // log new path
-                log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
-                return real_FSGetStatAsync(pClient, pCmd, new_path, stats, error, asyncParams);
-            }
+            // log new path
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+            return real_FSGetStatAsync(pClient, pCmd, new_path, stats, error, asyncParams);
         }
     }
     return real_FSGetStatAsync(pClient, pCmd, path, stats, error, asyncParams);
@@ -365,19 +362,9 @@ DECL(int, FSOpenFile, void *pClient, void *pCmd, char *path, char *mode, int *ha
             int len_base = (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
             char new_path[len + len_base + 1];
             compute_new_path(new_path, path, len, is_save);
-
-            // return function with new_path if path exists
-            int has_mode_w = 0;
-            for (int i = 0; mode[i] != '\0'; i++)
-                if (mode[i] == 'w')
-                    has_mode_w = 1;
-
-            int tmp_stats[25];
-            if (has_mode_w || real_FSGetStat(pClient, pCmd, new_path, &tmp_stats, -1) == 0) {
-                // log new path
-                log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
-                return real_FSOpenFile(pClient, pCmd, new_path, mode, handle, error);
-            }
+            // log new path
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+            return real_FSOpenFile(pClient, pCmd, new_path, mode, handle, error);
         }
     }
 
@@ -397,19 +384,8 @@ DECL(int, FSOpenFileAsync, void *pClient, void *pCmd, char *path, char *mode, in
             int len_base = (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
             char new_path[len + len_base + 1];
             compute_new_path(new_path, path, len, is_save);
-
-            // return function with new_path if path exists
-            int has_mode_w = 0;
-            for (int i = 0; mode[i] != '\0'; i++)
-                if (mode[i] == 'w')
-                    has_mode_w = 1;
-
-            int tmp_stats[25];
-            if (has_mode_w || real_FSGetStat(pClient, pCmd, new_path, &tmp_stats, -1) == 0) {
-                // log new path
-                log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
-                return real_FSOpenFileAsync(pClient, pCmd, new_path, mode, handle, error, asyncParams);
-            }
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+            return real_FSOpenFileAsync(pClient, pCmd, new_path, mode, handle, error, asyncParams);
         }
     }
     return real_FSOpenFileAsync(pClient, pCmd, path, mode, handle, error, asyncParams);
@@ -428,14 +404,8 @@ DECL(int, FSOpenDir, void *pClient, void* pCmd, char *path, int *handle, int err
             int len_base = (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
             char new_path[len + len_base + 1];
             compute_new_path(new_path, path, len, is_save);
-
-            // return function with new_path if path exists
-            int tmp_stats[25];
-            if (real_FSGetStat(pClient, pCmd, new_path, &tmp_stats, -1) == 0) {
-                // log new path
-                log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
-                return real_FSOpenDir(pClient, pCmd, new_path, handle, error);
-            }
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+            return real_FSOpenDir(pClient, pCmd, new_path, handle, error);
         }
     }
     return real_FSOpenDir(pClient, pCmd, path, handle, error);
@@ -454,14 +424,8 @@ DECL(int, FSOpenDirAsync, void *pClient, void* pCmd, char *path, int *handle, in
             int len_base = (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
             char new_path[len + len_base + 1];
             compute_new_path(new_path, path, len, is_save);
-
-            // return function with new_path if path exists
-            int tmp_stats[25];
-            if (real_FSGetStat(pClient, pCmd, new_path, &tmp_stats, -1) == 0) {
-                // log new path
-                log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
-                return real_FSOpenDirAsync(pClient, pCmd, new_path, handle, error, asyncParams);
-            }
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+            return real_FSOpenDirAsync(pClient, pCmd, new_path, handle, error, asyncParams);
         }
     }
     return real_FSOpenDirAsync(pClient, pCmd, path, handle, error, asyncParams);
@@ -480,14 +444,8 @@ DECL(int, FSChangeDir, void *pClient, void *pCmd, char *path, int error) {
             int len_base = (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
             char new_path[len + len_base + 1];
             compute_new_path(new_path, path, len, is_save);
-
-            // return function with new_path if path exists
-            int tmp_stats[25];
-            if (real_FSGetStat(pClient, pCmd, new_path, &tmp_stats, -1) == 0) {
-                // log new path
-                log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
-                return real_FSChangeDir(pClient, pCmd, new_path, error);
-            }
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+            return real_FSChangeDir(pClient, pCmd, new_path, error);
         }
     }
     return real_FSChangeDir(pClient, pCmd, path, error);
@@ -506,14 +464,8 @@ DECL(int, FSChangeDirAsync, void *pClient, void *pCmd, char *path, int error, FS
             int len_base = (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
             char new_path[len + len_base + 1];
             compute_new_path(new_path, path, len, is_save);
-
-            // return function with new_path if path exists
-            int tmp_stats[25];
-            if (real_FSGetStat(pClient, pCmd, new_path, &tmp_stats, -1) == 0) {
-                // log new path
-                log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
-                return real_FSChangeDirAsync(pClient, pCmd, new_path, error, asyncParams);
-            }
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+            return real_FSChangeDirAsync(pClient, pCmd, new_path, error, asyncParams);
         }
     }
     return real_FSChangeDirAsync(pClient, pCmd, path, error, asyncParams);
