@@ -12,10 +12,7 @@ static int client_num_alloc(void *pClient) {
     for (i = 0; i < MAX_CLIENT; i++)
         if (bss.pClient_fs[i] == pClient) {
             return i;
-        }
-
-    for (i = 0; i < MAX_CLIENT; i++)
-        if (bss.pClient_fs[i] == 0) {
+        } else if (bss.pClient_fs[i] == 0) {
             bss.pClient_fs[i] = pClient;
             return i;
         }
