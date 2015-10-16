@@ -3,14 +3,6 @@
 #include "../../libwiiu/src/coreinit.h"
 #include "../../libwiiu/src/vpad.h"
 
-#define OSTHREAD_SIZE	0x1000
-#define OS_THREAD_ATTR_AFFINITY_NONE  0x0007u        // affinity to run on every core
-#define OS_THREAD_ATTR_AFFINITY_CORE0 0x0001u        // run only on core0
-#define OS_THREAD_ATTR_AFFINITY_CORE1 0x0002u        // run only on core1
-#define OS_THREAD_ATTR_AFFINITY_CORE2 0x0004u        // run only on core2
-#define OS_THREAD_ATTR_DETACH         0x0008u        // detached
-#define OS_THREAD_ATTR_LAST           (OS_THREAD_ATTR_DETACH | OS_THREAD_ATTR_AFFINITY_NONE)
-
 #if VER == 532
     // Includes
 //    #include "menu532.h"
@@ -107,7 +99,8 @@ typedef struct {
 static void InstallMenu(private_data_t *private_data);
 static void InstallLoader(private_data_t *private_data);
 static void InstallFS(private_data_t *private_data);
-static bool _SYSLaunchMiiStudio();
+
+static int show_ip_selection_screen(unsigned int coreinit_handle, unsigned int *ip_address);
 static void curl_thread_callback(int argc, void *argv);
 
 /* ****************************************************************** */
@@ -128,10 +121,9 @@ void _start()
     }
     else
     {
-	_SYSLaunchMiiStudio();
-		private_data_t private_data;
-      
-		/* Get coreinit handle and keep it in memory */
+        private_data_t private_data;
+
+        /* Get coreinit handle and keep it in memory */
         unsigned int coreinit_handle;
         OSDynLoad_Acquire("coreinit", &coreinit_handle);
         private_data.coreinit_handle = coreinit_handle;
@@ -202,6 +194,10 @@ void _start()
         /* Schedule it for execution */
         OSResumeThread(thread);
 
+        /* while we are downloading let the user select his IP stuff */
+        unsigned int ip_address = 0;
+        int result = show_ip_selection_screen(coreinit_handle, &ip_address);
+
         // Keep this main thread around for ELF loading
         // Can not use OSJoinThread, which hangs for some reason, so we use a detached one and wait for it to terminate
         while(OSIsThreadTerminated(thread) == 0)
@@ -222,55 +218,168 @@ void _start()
         private_data.MEMFreeToDefaultHeap(thread);
         private_data.MEMFreeToDefaultHeap(stack);
 
-        /* Install our ELF files and free memory allocated */
-        if(private_data.data_menu) {
+        /* Install our ELF files */
+        if(result){
             InstallMenu(&private_data);
+            InstallLoader(&private_data);
+            InstallFS(&private_data);
+            /* patch server IP */
+            *((volatile unsigned int *)(INSTALL_FS_ADDR + 0xC1000000)) = ip_address;
+        }
+
+        /* free memory allocated */
+        if(private_data.data_menu) {
             private_data.MEMFreeToDefaultHeap(private_data.data_menu);
         }
         if(private_data.data_loader) {
-            InstallLoader(&private_data);
             private_data.MEMFreeToDefaultHeap(private_data.data_loader);
         }
         if(private_data.data_fs) {
-            InstallFS(&private_data);
             private_data.MEMFreeToDefaultHeap(private_data.data_fs);
         }
     }
     _Exit();
 }
 
-static bool _SYSLaunchMiiStudio()
+/* IP selection screen implemented by Maschell */
+static int show_ip_selection_screen(unsigned int coreinit_handle, unsigned int *ip_address)
 {
-    /****************************>           Get Handles           <****************************/
-    unsigned int coreinit_handle;
-    OSDynLoad_Acquire("coreinit.rpl", &coreinit_handle);
 
-    /****************************>       External Prototypes       <****************************/
-    void* (*OSAllocFromSystem)(uint32_t size, int align);
-    bool (*OSCreateThread)(void *thread, void *entry, int argc, void *args, uint32_t stack, uint32_t stack_size, int32_t priority, uint16_t attr);
-    int32_t (*OSResumeThread)(void *thread);
+   	/************************************************************************/
+	// Prepare screen
+	void (*OSScreenInit)();
+	unsigned int (*OSScreenGetBufferSizeEx)(unsigned int bufferNum);
+	unsigned int (*OSScreenSetBufferEx)(unsigned int bufferNum, void * addr);
+	unsigned int (*OSScreenClearBufferEx)(unsigned int bufferNum, unsigned int temp);
+	unsigned int (*OSScreenFlipBuffersEx)(unsigned int bufferNum);
+	unsigned int (*OSScreenPutFontEx)(unsigned int bufferNum, unsigned int posX, unsigned int posY, void * buffer);
 
-    /****************************>             Exports             <****************************/
-   OSDynLoad_FindExport(coreinit_handle, 0, "OSAllocFromSystem", &OSAllocFromSystem);
-    OSDynLoad_FindExport(coreinit_handle, 0, "OSCreateThread", &OSCreateThread);
-    OSDynLoad_FindExport(coreinit_handle, 0, "OSResumeThread", &OSResumeThread);
+	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenInit", &OSScreenInit);
+	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenGetBufferSizeEx", &OSScreenGetBufferSizeEx);
+	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenSetBufferEx", &OSScreenSetBufferEx);
+	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenClearBufferEx", &OSScreenClearBufferEx);
+	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenFlipBuffersEx", &OSScreenFlipBuffersEx);
+	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenPutFontEx", &OSScreenPutFontEx);
 
-    /* Allocate a stack for the thread */
-    uint32_t stack = (uint32_t) OSAllocFromSystem(0x1000, 0x10);
-    stack += 0x1000;
 
-    /* Create the thread */
-    void *thread = OSAllocFromSystem(OSTHREAD_SIZE, 8);
-    bool ret = OSCreateThread(thread, SYSLaunchMiiStudio, 0, null, stack, 0x1000, 0, OS_THREAD_ATTR_AFFINITY_CORE1 | OS_THREAD_ATTR_DETACH);
-    if (ret == false)
-        return false;
+	/* ****************************************************************** */
+	/*                             IP Settings                            */
+	/* ****************************************************************** */
 
-    /* Schedule it for execution */
-    OSResumeThread(thread);
+	// Set server ip
+	u_serv_ip ip;
+	ip.full = DEFAULT_SERVER_IP;
+	char msg[80];
+    // Prepare screen
+    int screen_buf0_size = 0;
+    int screen_buf1_size = 0;
+    uint screen_color = 0; // (r << 24) | (g << 16) | (b << 8) | a;
 
-    return true;
+    // Init screen and screen buffers
+    OSScreenInit();
+    screen_buf0_size = OSScreenGetBufferSizeEx(0);
+    screen_buf1_size = OSScreenGetBufferSizeEx(1);
+    OSScreenSetBufferEx(0, (void *)0xF4000000);
+    OSScreenSetBufferEx(1, (void *)0xF4000000 + screen_buf0_size);
+
+    // Clear screens
+    OSScreenClearBufferEx(0, screen_color);
+    OSScreenClearBufferEx(1, screen_color);
+
+    // Flush the cache
+    DCFlushRange((void *)0xF4000000, screen_buf0_size);
+    DCFlushRange((void *)0xF4000000 + screen_buf0_size, screen_buf1_size);
+
+    // Flip buffers
+    OSScreenFlipBuffersEx(0);
+    OSScreenFlipBuffersEx(1);
+
+	// Prepare vpad
+	unsigned int vpad_handle;
+	int (*VPADRead)(int controller, VPADData *buffer, unsigned int num, int *error);
+	OSDynLoad_Acquire("vpad.rpl", &vpad_handle);
+	OSDynLoad_FindExport(vpad_handle, 0, "VPADRead", &VPADRead);
+
+	// Set server ip with buttons
+	uint8_t sel_ip = 3;
+	int error;
+	uint8_t update_screen = 1;         // refresh screen initially
+	VPADData vpad_data;
+	VPADRead(0, &vpad_data, 1, &error); //Read initial vpad status
+	int noip = 1;
+	int result = 0;
+	int delay = 0;
+
+	while (1)
+	{
+		// Print message
+		PRINT_TEXT1(24, 1, "-- LOADIINE --");
+		PRINT_TEXT1(0, 5, "1. Press A to install loadiine");
+
+		PRINT_TEXT1(0, 11, "2    (optional)");
+		PRINT_TEXT2(0, 12, "%s : %3d.%3d.%3d.%3d", "  a. Server IP", ip.digit[0], ip.digit[1], ip.digit[2], ip.digit[3]);
+		PRINT_TEXT1(0, 13, "  b. Press X to install loadiine with server settings");
+		PRINT_TEXT1(42, 17, "home button to exit ...");
+
+		// Print ip digit selector
+		uint8_t x_shift = 17 + 4 * sel_ip;
+		PRINT_TEXT1(x_shift, 11, "vvv");
+
+		// Refresh screen if needed
+		if (update_screen)
+        {
+            OSScreenFlipBuffersEx(1);
+            OSScreenClearBufferEx(1, 0);
+        }
+
+		// Read vpad
+		VPADRead(0, &vpad_data, 1, &error);
+
+		// Check for buttons
+        // Home Button
+        if (vpad_data.btn_trigger & BUTTON_HOME) {
+            result = 0;
+            break;
+        }
+        // A Button
+        if (vpad_data.btn_trigger & BUTTON_A) {
+            *ip_address = 0;
+            result = 1;
+            break;
+        }
+        // A Button
+        if (vpad_data.btn_trigger & BUTTON_X){
+            *ip_address = ip.full;
+            result = 1;
+            break;
+        }
+        // Left/Right Buttons
+        if (vpad_data.btn_trigger & BUTTON_LEFT ) sel_ip = !sel_ip ? sel_ip = 3 : --sel_ip;
+        if (vpad_data.btn_trigger & BUTTON_RIGHT) sel_ip = ++sel_ip % 4;
+
+        // Up/Down Buttons
+        if ((vpad_data.btn_hold & BUTTON_UP) || (vpad_data.btn_trigger & BUTTON_UP)) {
+            if(--delay <= 0) {
+                ip.digit[sel_ip]++;
+                delay = (vpad_data.btn_trigger & BUTTON_UP) ? 30 : 3;
+            }
+        }
+        else if ((vpad_data.btn_hold & BUTTON_DOWN) || (vpad_data.btn_trigger & BUTTON_DOWN)) {
+            if(--delay <= 0) {
+                ip.digit[sel_ip]--;
+                delay = (vpad_data.btn_trigger & BUTTON_DOWN) ? 30 : 3;
+            }
+        }
+        else {
+            delay = 0;
+        }
+
+		// Button pressed ?
+		update_screen = (vpad_data.btn_hold & BTN_PRESSED) ? 1 : 0;
+	}
+
+	return result;
 }
-
 
 /* libcurl data write callback */
 static int curl_write_data_callback(void *buffer, int size, int nmemb, void *userp)
@@ -397,6 +506,9 @@ static void curl_thread_callback(int argc, void *argv)
 	//void (*OSDynLoad_Release)(unsigned int handle);
 	//OSDynLoad_FindExport(private_data->coreinit_handle, 0, "OSDynLoad_Release", &OSDynLoad_Release);
 	//OSDynLoad_Release(libcurl_handle);
+
+    /* Pre-load the Mii Studio to be executed on _Exit - thanks to wj444 for sharing it */
+	SYSLaunchMiiStudio();
 }
 
 static int strcmp(const char *s1, const char *s2)
@@ -555,133 +667,9 @@ static void InstallLoader(private_data_t *private_data)
 /* ****************************************************************** */
 static void InstallFS(private_data_t *private_data)
 {
-	 /* Check if already installed */
+    /* Check if already installed */
     if (*(volatile unsigned int *)(INSTALL_FS_DONE_ADDR + 0xC1000000) == INSTALL_FS_DONE_FLAG)
         return;
-   	/************************************************************************/
-	// Prepare screen
-	void (*OSScreenInit)();
-	unsigned int (*OSScreenGetBufferSizeEx)(unsigned int bufferNum);
-	unsigned int (*OSScreenSetBufferEx)(unsigned int bufferNum, void * addr);
-	unsigned int (*OSScreenClearBufferEx)(unsigned int bufferNum, unsigned int temp);
-	unsigned int (*OSScreenFlipBuffersEx)(unsigned int bufferNum);
-	unsigned int (*OSScreenPutFontEx)(unsigned int bufferNum, unsigned int posX, unsigned int posY, void * buffer);
-	
-	unsigned int coreinit_handle;
-	OSDynLoad_Acquire("coreinit.rpl", &coreinit_handle);
-	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenInit", &OSScreenInit);
-	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenGetBufferSizeEx", &OSScreenGetBufferSizeEx);
-	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenSetBufferEx", &OSScreenSetBufferEx);
-	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenClearBufferEx", &OSScreenClearBufferEx);
-	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenFlipBuffersEx", &OSScreenFlipBuffersEx);
-	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenPutFontEx", &OSScreenPutFontEx);
-
-	
-	/* ****************************************************************** */
-	/*                             IP Settings                            */
-	/* ****************************************************************** */
-
-	// Set server ip
-	u_serv_ip ip;
-	ip.full = DEFAULT_SERVER_IP;
-	char msg[80];
-    // Prepare screen
-    int screen_buf0_size = 0;
-    int screen_buf1_size = 0;
-    uint screen_color = 0; // (r << 24) | (g << 16) | (b << 8) | a;
-
-    // Init screen and screen buffers
-    OSScreenInit();
-    screen_buf0_size = OSScreenGetBufferSizeEx(0);
-    screen_buf1_size = OSScreenGetBufferSizeEx(1);
-    OSScreenSetBufferEx(0, (void *)0xF4000000);
-    OSScreenSetBufferEx(1, (void *)0xF4000000 + screen_buf0_size);
-
-    // Clear screens
-    OSScreenClearBufferEx(0, screen_color);
-    OSScreenClearBufferEx(1, screen_color);
-
-    // Flush the cache
-    DCFlushRange((void *)0xF4000000, screen_buf0_size);
-    DCFlushRange((void *)0xF4000000 + screen_buf0_size, screen_buf1_size);
-
-    // Flip buffers
-    OSScreenFlipBuffersEx(0);
-    OSScreenFlipBuffersEx(1);
-
-	
-	// Prepare vpad
-	unsigned int vpad_handle;
-	int (*VPADRead)(int controller, VPADData *buffer, unsigned int num, int *error);
-	OSDynLoad_Acquire("vpad.rpl", &vpad_handle);
-	OSDynLoad_FindExport(vpad_handle, 0, "VPADRead", &VPADRead);
-
-	// Set server ip with buttons
-	uint8_t sel_ip = 3;
-	int error;
-	uint8_t button_pressed = 1;
-	VPADData vpad_data;
-	VPADRead(0, &vpad_data, 1, &error); //Read initial vpad status
-	int noip = 1;
-	while (1)
-	{
-		// Refresh screen if needed
-		if (button_pressed) { OSScreenFlipBuffersEx(1); OSScreenClearBufferEx(1, 0); }
-
-		// Print message
-		PRINT_TEXT1(24, 1, "-- LOADIINE --");
-		PRINT_TEXT1(0, 5, "1. Press A to install loadiine");
-		
-		PRINT_TEXT1(0, 11, "2    (optional)");
-		PRINT_TEXT2(0, 12, "%s : %3d.%3d.%3d.%3d", "  a. Server IP", ip.digit[0], ip.digit[1], ip.digit[2], ip.digit[3]);	
-		PRINT_TEXT1(0, 13, "  b. Press X to install loadiine with server settings");
-		PRINT_TEXT1(42, 17, "home button to exit ...");
-		
-		// Print ip digit selector
-		uint8_t x_shift = 17 + 4 * sel_ip;
-		PRINT_TEXT1(x_shift, 11, "vvv");
-
-
-		// Read vpad
-		VPADRead(0, &vpad_data, 1, &error);
-
-		// Update screen
-		if (button_pressed)
-		{
-			OSScreenFlipBuffersEx(1);
-			OSScreenClearBufferEx(1, 0);
-		}
-		// Check for buttons
-		else
-		{
-			// Home Button
-			if (vpad_data.btn_hold & BUTTON_HOME)
-				goto quit;
-
-			// A Button
-			if (vpad_data.btn_hold & BUTTON_A)
-				break;
-				
-			// A Button
-			if (vpad_data.btn_hold & BUTTON_X){
-				noip = 0;
-				break;
-			}
-			// Left/Right Buttons
-			if (vpad_data.btn_hold & BUTTON_LEFT ) sel_ip = !sel_ip ? sel_ip = 3 : --sel_ip;
-			if (vpad_data.btn_hold & BUTTON_RIGHT) sel_ip = ++sel_ip % 4;
-
-			// Up/Down Buttons
-			if (vpad_data.btn_hold & BUTTON_UP  ) ip.digit[sel_ip] = ++ip.digit[sel_ip];
-			if (vpad_data.btn_hold & BUTTON_DOWN) ip.digit[sel_ip] = --ip.digit[sel_ip];
-		}
-
-		// Button pressed ?
-		button_pressed = (vpad_data.btn_hold & BTN_PRESSED) ? 1 : 0;
-	}
-	
-	
-	//set that is was already installed
     *(volatile unsigned int *)(INSTALL_FS_DONE_ADDR + 0xC1000000) = INSTALL_FS_DONE_FLAG;
 
     // get .text section
@@ -700,14 +688,7 @@ static void InstallFS(private_data_t *private_data)
     while (len--) {
         loc[len] = fs_text_bin[len];
     }
-		
-	/* server IP address */
-	if(!noip){		
-		((unsigned int *)loc)[0] = ip.full; //PC_IP;
-	}else{
-		*((volatile unsigned int *)loc) = 0;
-	}
-	
+
     DCFlushRange((void*)loc, fs_text_bin_len);
     ICInvalidateRange((void*)loc, fs_text_bin_len);
 
@@ -743,6 +724,4 @@ static void InstallFS(private_data_t *private_data)
         DCFlushRange((int *)(0xC1000000 + real_addr), 4);
         ICInvalidateRange((int *)(0xC1000000 + real_addr), 4);
     }
-	quit:
-    _Exit();
 }
