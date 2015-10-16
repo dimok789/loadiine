@@ -5,6 +5,9 @@ SECTIONS {
 		*(.text._start);
 		*(.text*);
 	}
+	.rodata : {
+		*(.rodata*);
+	}
 	/DISCARD/ : {
 		*(*);
 	}

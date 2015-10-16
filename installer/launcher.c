@@ -18,8 +18,8 @@
     #define ICInvalidateRange ((void (*)(const void *addr, uint length))0x1024010)
 
     // Install addresses
-    #define INSTALL_MENU_ADDR           0x011dd000  // where the menu is copied in memory
-    #define INSTALL_LOADER_ADDR         0x011df000  // where the loader code is copied in memory
+//    #define INSTALL_MENU_ADDR           0x011dd000  // where the menu is copied in memory
+//    #define INSTALL_LOADER_ADDR         0x011df000  // where the loader code is copied in memory
     #define INSTALL_FS_ADDR             0x011e0000  // where the fs functions are copied in memory
 
     // Install flags
@@ -528,7 +528,7 @@ static int strcmp(const char *s1, const char *s2)
     return 0;
 }
 
-static int get_section(private_data_t *private_data, unsigned char *data, const char *name, int * size)
+static unsigned int get_section(private_data_t *private_data, unsigned char *data, const char *name, unsigned int * size, unsigned int * addr)
 {
 	Elf32_Ehdr *ehdr = (Elf32_Ehdr *) data;
 
@@ -547,6 +547,8 @@ static int get_section(private_data_t *private_data, unsigned char *data, const 
         const char *section_name = ((const char*)data) + shdr[ehdr->e_shstrndx].sh_offset + shdr[i].sh_name;
         if(strcmp(section_name, name) == 0)
         {
+            if(addr)
+                *addr = shdr[i].sh_addr;
             if(size)
                 *size = shdr[i].sh_size;
             return shdr[i].sh_offset;
@@ -562,18 +564,28 @@ static int get_section(private_data_t *private_data, unsigned char *data, const 
 static void InstallMenu(private_data_t *private_data)
 {
     // get .text section
-    int menu_text_bin_len = 0;
-    int section_offset = get_section(private_data, private_data->data_menu, ELF_TEXT, &menu_text_bin_len);
+    unsigned int menu_text_addr = 0;
+    unsigned int menu_text_len = 0;
+    unsigned int section_offset = get_section(private_data, private_data->data_menu, ELF_TEXT, &menu_text_len, &menu_text_addr);
+    unsigned char *menu_text = private_data->data_menu + section_offset;
 
-    unsigned char *menu_text_bin = private_data->data_menu + section_offset;
+    // get the .rodata section
+    unsigned int menu_rodata_addr = 0;
+    unsigned int menu_rodata_len = 0;
+    section_offset = get_section(private_data, private_data->data_menu, ELF_RODATA, &menu_rodata_len, &menu_rodata_addr);
+    unsigned char *menu_rodata = private_data->data_menu + section_offset;
 
-    /* Copy menu code in memory */
-    memcpy((void*)0xC1000000 + INSTALL_MENU_ADDR, menu_text_bin, menu_text_bin_len);
-    DCFlushRange((void*)(0xC1000000 + INSTALL_MENU_ADDR), menu_text_bin_len);
-    ICInvalidateRange((void*)(0xC1000000 + INSTALL_MENU_ADDR), menu_text_bin_len);
+    /* Copy menu code to memory */
+    memcpy((void*)0xC1000000 + menu_text_addr, menu_text, menu_text_len);
+    DCFlushRange((void*)(0xC1000000 + menu_text_addr), menu_text_len);
+    ICInvalidateRange((void*)(0xC1000000 + menu_text_addr), menu_text_len);
+
+    /* Copy menu rodata to memory */
+    memcpy((void*)0xC1000000 + menu_rodata_addr, menu_rodata, menu_rodata_len);
+    DCFlushRange((void*)(0xC1000000 + menu_rodata_addr), menu_rodata_len);
 
     /* Patch coreinit - on 5.3.2 coreinit.rpl starts at 0x101c400 */
-    int jump_length = INSTALL_MENU_ADDR - 0x0101c55c;                       // => jump to (101C55C + 1C0AA4) = 11DD000 which is the codehandler
+    int jump_length = menu_text_addr - 0x0101c55c;                       // => jump to (101C55C + 1C0AA4) = 11DD000 which is the codehandler
     *((volatile uint32_t *)(0xC1000000 + 0x0101c55c)) = 0x48000001 | jump_length;    // 0x481c0aa5 => bl 0x1C0AA4  => write at 0x15C in coreinit file => end of the coreinit_start function
     DCFlushRange((void*)(0xC1000000 + 0x0101c55c), 4);
     ICInvalidateRange((void*)(0xC1000000 + 0x0101c55c), 4);
@@ -586,13 +598,15 @@ static void InstallMenu(private_data_t *private_data)
 static void InstallLoader(private_data_t *private_data)
 {
     // get .text section
-    unsigned int loader_text_bin_len = 0;
-    int section_offset = get_section(private_data, private_data->data_loader, ELF_TEXT, &loader_text_bin_len);
-    unsigned char *loader_text_bin = private_data->data_loader + section_offset;
+    unsigned int loader_text_addr = 0;
+    unsigned int loader_text_len = 0;
+    unsigned int section_offset = get_section(private_data, private_data->data_loader, ELF_TEXT, &loader_text_len, &loader_text_addr);
+    unsigned char *loader_text = private_data->data_loader + section_offset;
     // get .magic section
-    unsigned int loader_magic_bin_len = 0;
-    section_offset = get_section(private_data, private_data->data_loader, ".magic", &loader_magic_bin_len);
-    unsigned char *loader_magic_bin = private_data->data_loader + section_offset;
+    unsigned int loader_magic_addr = 0;
+    unsigned int loader_magic_len = 0;
+    section_offset = get_section(private_data, private_data->data_loader, ".magic", &loader_magic_len, &loader_magic_addr);
+    unsigned char *loader_magic = private_data->data_loader + section_offset;
 
     /* Patch for GetNextBounce function (loader) */
     /* we dont want instructions to use r9/r11 registers, as it is modified by gcc prologue/epilogue when calling our functions */
@@ -625,10 +639,10 @@ static void InstallLoader(private_data_t *private_data)
     /* - we want to copy the code at INSTALL_ADDR (0x011de000), this memory range is the for cafeOS app and libraries, but is write protected */
     /* - in order to have the rights to write into memory in this address range we need to use the 0xA0000000 virtual address range */
     /* - so start virtual address is : (0xA0000000 + (0x32000000 - 0x10000000 - 0x01000000)) = 0xC1000000 */
-    memcpy((void*)(INSTALL_LOADER_ADDR + 0xC1000000), loader_text_bin, loader_text_bin_len);
+    memcpy((void*)(0xC1000000 + loader_text_addr), loader_text, loader_text_len);
     // flush caches and invalidate instruction cache
-    DCFlushRange((void*)(0xC1000000 + INSTALL_LOADER_ADDR), loader_text_bin_len);
-    ICInvalidateRange((void*)(0xC1000000 + INSTALL_LOADER_ADDR), loader_text_bin_len);
+    DCFlushRange((void*)(0xC1000000 + loader_text_addr), loader_text_len);
+    ICInvalidateRange((void*)(0xC1000000 + loader_text_addr), loader_text_len);
 
     /* Copy original loader instructions in memory for when we want to restore the loader at his original state */
     // TODO: copy original instructions in order to restore them later to have a clean loader state
@@ -640,8 +654,8 @@ static void InstallLoader(private_data_t *private_data)
         const void* func; // our replacement function which is called
         const void* call; // address where to place the jump to our function
         uint        orig_instr;
-    } *magic = (struct magic_t *)loader_magic_bin;
-    int magic_len = loader_magic_bin_len / sizeof(struct magic_t);
+    } *magic = (struct magic_t *)loader_magic;
+    int magic_len = loader_magic_len / sizeof(struct magic_t);
 
     /* Replace loader instructions */
     /* Loop to replace instructions in loader code by a "bl"(jump) instruction to our replacement function */
@@ -673,34 +687,44 @@ static void InstallFS(private_data_t *private_data)
     *(volatile unsigned int *)(INSTALL_FS_DONE_ADDR + 0xC1000000) = INSTALL_FS_DONE_FLAG;
 
     // get .text section
-    unsigned int fs_text_bin_len = 0;
-    int section_offset = get_section(private_data, private_data->data_fs, ELF_TEXT, &fs_text_bin_len);
-    unsigned char *fs_text_bin = private_data->data_fs + section_offset;
+    unsigned int fs_text_addr = 0;
+    unsigned int fs_text_len = 0;
+    unsigned int section_offset = get_section(private_data, private_data->data_fs, ELF_TEXT, &fs_text_len, &fs_text_addr);
+    unsigned char *fs_text = private_data->data_fs + section_offset;
+    // get .rodata section
+    unsigned int fs_rodata_addr = 0;
+    unsigned int fs_rodata_len = 0;
+    section_offset = get_section(private_data, private_data->data_fs, ELF_RODATA, &fs_rodata_len, &fs_rodata_addr);
+    unsigned char *fs_rodata = private_data->data_fs + section_offset;
     // get .magic section
-    unsigned int fs_magic_bin_len = 0;
-    section_offset = get_section(private_data, private_data->data_fs, ".magic", &fs_magic_bin_len);
-    unsigned char *fs_magic_bin = private_data->data_fs + section_offset;
+    unsigned int fs_magic_addr = 0;
+    unsigned int fs_magic_len = 0;
+    section_offset = get_section(private_data, private_data->data_fs, ".magic", &fs_magic_len, &fs_magic_addr);
+    unsigned char *fs_magic = private_data->data_fs + section_offset;
 
-    /* Copy fs code in memory */
-    unsigned int len = fs_text_bin_len;
-    unsigned char *loc = (unsigned char *)((char *)INSTALL_FS_ADDR + 0xC1000000);
+    /* Copy fs code section to memory */
+    unsigned int cpy_addr = (0xC1000000 + fs_text_addr);
+    memcpy((void*)cpy_addr, fs_text, fs_text_len);
+    DCFlushRange((void*)cpy_addr, fs_text_len);
+    ICInvalidateRange((void*)cpy_addr, fs_text_len);
 
-    while (len--) {
-        loc[len] = fs_text_bin[len];
-    }
+    /* Copy fs rodata section to memory */
+    cpy_addr = (0xC1000000 + fs_rodata_addr);
+    memcpy((void*)cpy_addr, fs_rodata, fs_rodata_len);
+    DCFlushRange((void*)cpy_addr, fs_rodata_len);
 
-    DCFlushRange((void*)loc, fs_text_bin_len);
-    ICInvalidateRange((void*)loc, fs_text_bin_len);
-
+    /* ------------------------------------------------------------------------------------------------------------------------*/
+    /* patch the FS functions to branch to our functions                                                                       */
+    /* ------------------------------------------------------------------------------------------------------------------------*/
     struct magic_t {
         void *real;
         void *replacement;
         void *call;
-    } *magic = (struct magic_t *)fs_magic_bin;
-    len = fs_magic_bin_len / sizeof(struct magic_t);
+    } *magic = (struct magic_t *)fs_magic;
+    unsigned int len = fs_magic_len / sizeof(struct magic_t);
 
-    volatile int *space = (volatile int *)(loc + fs_text_bin_len);
     /* Patch branches to it. */
+    volatile int *space = (volatile int *)(0xC1000000 + fs_text_addr + fs_text_len);
     while (len--) {
         int real_addr = (int)magic[len].real;
         int repl_addr = (int)magic[len].replacement;

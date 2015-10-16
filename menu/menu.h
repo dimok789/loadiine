@@ -44,7 +44,7 @@ extern uint OSScreenGetBufferSizeEx(uint bufferNum);
 extern uint OSScreenSetBufferEx(uint bufferNum, void * addr);
 extern uint OSScreenClearBufferEx(uint bufferNum, uint temp);
 extern uint OSScreenFlipBuffersEx(uint bufferNum);
-extern uint OSScreenPutFontEx(uint bufferNum, uint posX, uint posY, void * buffer);
+extern uint OSScreenPutFontEx(uint bufferNum, uint posX, uint posY, const void * buffer);
 
 /* VPAD */
 extern int VPADRead(int controller, VPADData *buffer, uint num, int *error);

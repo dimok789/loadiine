@@ -97,17 +97,8 @@ int _start(int argc, char *argv[]) {
                 // Open game dir
                 while (path[path_index])
                     path_index++;
-                path[path_index++] = '/';
-                path[path_index++] = 'w';
-                path[path_index++] = 'i';
-                path[path_index++] = 'i';
-                path[path_index++] = 'u';
-                path[path_index++] = '/';
-                path[path_index++] = 'g';
-                path[path_index++] = 'a';
-                path[path_index++] = 'm';
-                path[path_index++] = 'e';
-                path[path_index++] = 's';
+
+                path_index += __os_snprintf(&path[path_index], FS_MAX_MOUNTPATH_SIZE - path_index, "%s", SD_GAMES_PATH);
 
                 if (FSOpenDir(pClient, pCmd, path, &game_dh, FS_RET_ALL_ERROR) == FS_STATUS_OK)
                 {
@@ -126,13 +117,6 @@ int _start(int argc, char *argv[]) {
     /* ****************************************************************** */
     /*                              Display MENU                          */
     /* ****************************************************************** */
-
-    char buf_title[16] = {'-', '-', ' ', 'L', 'O', 'A', 'D', 'I', 'I', 'N', 'E', ' ', '-', '-', '\0'};
-    char buf_sd_status[40] = {'s', 'd', ' ', 'c', 'a', 'r', 'd', ' ', 'n', 'o', 't', ' ', 'f', 'o', 'u', 'n', 'd', ' ', 'o', 'r', ' ', 'c', 'a', 'n', 'n', 'o', 't', ' ', 'b', 'e', ' ', 'm', 'o', 'u', 'n', 't', 'e', 'd', '\0'};
-    char buf_nb_game[15] = {'%', 'd', ' ', 'g', 'a', 'm', 'e', 's', '\0'};
-    char buf_error[20] = {'C', 'a', 'n', '\'', 't', ' ', 'l', 'a', 'u', 'n', 'c', 'h', ' ', 'g', 'a', 'm', 'e', '!', '\0'};
-    char buf_sel[4] = {'=', '>', '\0'};
-
     uint8_t game_index = 0;
     uint8_t game_sel = 0;
     uint8_t button_pressed = 1;
@@ -152,12 +136,12 @@ int _start(int argc, char *argv[]) {
         VPADRead(0, &vpad_data, 1, &error);
 
         // Title : "-- LOADINE --"
-        PRINT_TEXT1(24, 1, buf_title);
+        PRINT_TEXT1(24, 1, "-- LOADIINE --");
 
         if (!sd_status)
         {
             // Print sd card status : "sd card not found or cannot be mounted"
-            PRINT_TEXT1(0, 5, buf_sd_status);
+            PRINT_TEXT1(0, 5, "sd card not found or cannot be mounted");
         }
         else
         {
@@ -174,7 +158,7 @@ int _start(int argc, char *argv[]) {
             }
 
             // Nb games : "%d games :"
-            PRINT_TEXT2(0, 17, buf_nb_game, game_count);
+            PRINT_TEXT2(0, 17, "%d games", game_count);
 
             // Print game titles
             for (int i = 0; (i < MAX_GAME_ON_PAGE) && ((game_index + i) < game_count); i++)
@@ -183,7 +167,7 @@ int _start(int argc, char *argv[]) {
             }
 
             // Print selector
-            PRINT_TEXT1(0, 3 + game_sel - game_index, buf_sel);
+            PRINT_TEXT1(0, 3 + game_sel - game_index, "=>");
 
             // Check buttons
             if (!button_pressed)
@@ -203,14 +187,7 @@ int _start(int argc, char *argv[]) {
                         len++;
 
                     // Create base folder string
-                    path[path_index++] = '/';
-                    memcpy(&(path[path_index]), game_dir[game_sel], len);
-                    path_index += len;
-					path[path_index++] = '/';
-					path[path_index++] = 'c';
-					path[path_index++] = 'o';
-					path[path_index++] = 'd';
-					path[path_index++] = 'e';
+                    path_index += __os_snprintf(&path[path_index], FS_MAX_MOUNTPATH_SIZE - path_index, "/%s%s", game_dir[game_sel], RPX_RPL_PATH);
 
                     // Open game folder
                     if (FSOpenDir(pClient, pCmd, path, &game_dh, FS_RET_ALL_ERROR) == FS_STATUS_OK) // /vol/external01/_RPC/[title]/
@@ -261,9 +238,10 @@ int _start(int argc, char *argv[]) {
         // Check launch
         if (launching)
         {
-            if (ready)
+            if (ready) {
                 break;
-            PRINT_TEXT1(45, 17, buf_error);
+            }
+            PRINT_TEXT1(45, 17, "Can't launch game!");
         }
 
         // Update screen

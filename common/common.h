@@ -1,6 +1,15 @@
 #ifndef COMMON_H
 #define	COMMON_H
 
+#define CAFE_OS_SD_PATH         "/vol/external01"
+#define SD_LOADIINE_PATH        "/wiiu"
+#define GAMES_PATH               "/games"
+#define SAVES_PATH               "/saves"
+#define SD_GAMES_PATH            SD_LOADIINE_PATH GAMES_PATH
+#define SD_SAVES_PATH            SD_LOADIINE_PATH SAVES_PATH
+#define CONTENT_PATH            "/content"
+#define RPX_RPL_PATH            "/code"
+
 /* DATA_ADDRESS : address where flags start */
 #define DATA_ADDR               ((void *)0x011e3800)
 #define BOUNCE_FLAG_ADDR        (DATA_ADDR - 0x04)  // bounce flag

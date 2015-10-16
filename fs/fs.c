@@ -198,69 +198,10 @@ DECL(int, FSInit, void) {
         bss_ptr = memalign(sizeof(struct bss_t), 0x40);
         memset(bss_ptr, 0, sizeof(struct bss_t));
 
-        // set mount base
-		int i = 0;
-        bss.mount_base[i++]  = '/';
-        bss.mount_base[i++]  = 'v';
-        bss.mount_base[i++]  = 'o';
-        bss.mount_base[i++]  = 'l';
-        bss.mount_base[i++]  = '/';
-        bss.mount_base[i++]  = 'e';
-        bss.mount_base[i++]  = 'x';
-        bss.mount_base[i++]  = 't';
-        bss.mount_base[i++]  = 'e';
-        bss.mount_base[i++]  = 'r';
-        bss.mount_base[i++] = 'n';
-        bss.mount_base[i++] = 'a';
-        bss.mount_base[i++] = 'l';
-        bss.mount_base[i++] = '0';
-        bss.mount_base[i++] = '1';
-        bss.mount_base[i++] = '/';
-        bss.mount_base[i++] = 'w';
-        bss.mount_base[i++] = 'i';
-        bss.mount_base[i++] = 'i';
-        bss.mount_base[i++] = 'u';
-        bss.mount_base[i++] = '/';
-        bss.mount_base[i++] = 'g';
-        bss.mount_base[i++] = 'a';
-        bss.mount_base[i++] = 'm';
-        bss.mount_base[i++] = 'e';
-        bss.mount_base[i++] = 's';
-        bss.mount_base[i++] = '/';
-
-		// TODO: check length of mount_base, but in case its too long it will hang anyway
-		char *game_name_ptr = (char *)GAME_DIR_NAME;
-		while(*game_name_ptr) {
-			bss.mount_base[i++] = *game_name_ptr++;
-		}
-        bss.mount_base[i++] = '/';
-        bss.mount_base[i++] = 'c';
-        bss.mount_base[i++] = 'o';
-        bss.mount_base[i++] = 'n';
-        bss.mount_base[i++] = 't';
-        bss.mount_base[i++] = 'e';
-        bss.mount_base[i++] = 'n';
-        bss.mount_base[i++] = 't';
-		bss.mount_base[i++] = '\0';
-
-        // set save base
-        for (i = 0; i < 20; i++)
-            bss.save_base[i] = bss.mount_base[i];
-
-        bss.save_base[i++] = '/';
-        bss.save_base[i++] = 's';
-        bss.save_base[i++] = 'a';
-        bss.save_base[i++] = 'v';
-        bss.save_base[i++] = 'e';
-        bss.save_base[i++] = 's';
-        bss.save_base[i++] = '/';
-
-		// TODO: check length of save_base, but in case its too long it will hang anyway
-		game_name_ptr = (char *)GAME_DIR_NAME;
-		while(*game_name_ptr) {
-			bss.save_base[i++] = *game_name_ptr++;
-		}
-		bss.save_base[i++] = '\0';
+        // create game mount path prefix
+        __os_snprintf(bss.mount_base, sizeof(bss.mount_base), "%s%s/%s%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, (char *)GAME_DIR_NAME, CONTENT_PATH);
+        // create game save path prefix
+        __os_snprintf(bss.save_base, sizeof(bss.save_base), "%s%s/%s", CAFE_OS_SD_PATH, SD_SAVES_PATH, (char *)GAME_DIR_NAME);
 
         // in case there is no game selected
 //        if (bss.mount_base[16] == 0) { bss.mount_base[16] = '0'; bss.save_base[21] = '0'; }
