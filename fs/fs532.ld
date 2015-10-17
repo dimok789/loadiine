@@ -11,6 +11,9 @@ SECTIONS {
 	.magic : {
 		*(.magic*);
 	}
+	.rodata : {
+		*(.rodata*);
+	}
 	/DISCARD/ : {
 		*(*);
 	}
@@ -73,6 +76,9 @@ PROVIDE(socketclose = 0x10c2314);
 PROVIDE(connect = 0x10c0828);
 PROVIDE(send = 0x10c16ac);
 PROVIDE(recv = 0x10c0aec);
+
+/* OS methods */
+PROVIDE(__os_snprintf = 0x102f09c);
 
 /* Standard library methods */
 PROVIDE(memcpy = 0x1035a68);

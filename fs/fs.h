@@ -21,7 +21,10 @@ extern int connect(int socket, void *addr, int addrlen);
 extern int send(int socket, const void *buffer, int size, int flags);
 extern int recv(int socket, void *buffer, int size, int flags);
 
+extern int __os_snprintf(char* s, int n, const char * format, ...);
+
 extern void GX2WaitForVsync(void);
+
 
 struct in_addr {
     unsigned int s_addr;
@@ -41,7 +44,7 @@ extern FSStatus FSGetMountSource(void *pClient, void *pCmd, FSSourceType type, F
 extern FSStatus FSMount(void *pClient, void *pCmd, FSMountSource *source, char *target, uint bytes, FSRetFlag errHandling);
 
 /* Forward declarations */
-#define MAX_CLIENT 60
+#define MAX_CLIENT 32
 
 struct bss_t {
     int socket_fs[MAX_CLIENT];
@@ -100,7 +103,5 @@ void log_string(int sock, const char* str, char byte);
 #define BYTE_MOUNT_SD           0x30
 #define BYTE_MOUNT_SD_OK        0x31
 #define BYTE_MOUNT_SD_BAD       0x32
-
-#define BYTE_ERROR_CODE 		0x50
 
 #endif /* _FS_H */
