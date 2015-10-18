@@ -290,13 +290,19 @@ void GetNextBounce_1(void)
     int r10; // size read, max 0x400000, or less if it is end of stream
     int r12; // read offset start : starts at 0x400000 + x * 0x800000
     int r5;  // read offset end   : read offset start + size read
+    int r6, r9, r30;
     asm("mr %0, 10\n"
         "mr %1, 12\n"
         "mr %2, 5\n" // r5 is originaly r9 but we patched it
-        :"=r"(r10), "=r"(r12), "=r"(r5)
+        "mr %3, 30\n"
+        "mr %4, 6\n"         // read out r6 which is than transformed to r9 by substract of r10
+        :"=r"(r10), "=r"(r12), "=r"(r5), "=r"(r30), "=r"(r9)
         :
         :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
     );
+
+    // substract r10 to get the value of r9 as what we loaded is actually r6
+    r9 = r9 - r10;
 
     // If it is active
     int is_active = *(volatile unsigned int *)(IS_ACTIVE_ADDR);
@@ -304,22 +310,28 @@ void GetNextBounce_1(void)
     {
         // Check if we need to adjust the read size and offset
         int size = *(volatile unsigned int *)(MEM_SIZE);
-        if (size < 0x400000)
-        {
-            r10 = size;         // set the new read size
-            r5 = r12 + r10;     // set the offset end
-        }
+        if (size > 0x400000)
+            size = 0x400000;
+
+        r10 = size;         // set the new read size
+        r5 = r12 + r10;     // set the offset end
 
         *(volatile unsigned int *)(BOUNCE_FLAG_ADDR) = 1; // Bounce flag on
     }
+
+    // store correct size
+    r6 = r9 + r10;
 
     // return properly
     asm("mr 12, %0\n"
         "mr 5, %1\n"
         "mr 10, %2\n"
+        "mr 6, %3\n"
+        "mr 30, %4\n"
+        "stw 6, 0x80(30)\n"
         "cmplw 10, 4\n"
         :
-        :"r"(r12), "r"(r5), "r"(r10)
+        :"r"(r12), "r"(r5), "r"(r10), "r"(r6), "r"(r30)
         :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
     );
 }
@@ -334,10 +346,12 @@ void GetNextBounce_2(void)
     int r10; // size read, max 0x400000, or less if it is end of stream
     int r12; // read offset start : starts at 0x800000 + x * 0x800000
     int r5;  // read offset end   : read offset start + size read
+    int r0, r30;
     asm("mr %0, 10\n"
         "mr %1, 12\n"
-        "mr %2, 5\n" // r5 is originaly r9 but it's been patched
-        :"=r"(r10), "=r"(r12), "=r"(r5)
+        "mr %2, 30\n"
+        "mr %3, 5\n" // r5 is originaly r9 but it's been patched
+        :"=r"(r10), "=r"(r12), "=r"(r30), "=r"(r5)
         :
         :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
     );
@@ -348,22 +362,27 @@ void GetNextBounce_2(void)
     {
         // Check if we need to adjust the read size and offset
         int size = *(volatile unsigned int *)(MEM_SIZE);
-        if (size < 0x400000)
-        {
-            r10 = size;         // set the new read size
-            r5 = r12 + r10;     // set the offset end
-        }
+        if (size > 0x400000)
+            size = 0x400000;
+
+        r10 = size;         // set the new read size
+        r5 = r12 + r10;     // set the offset end
 
         *(volatile unsigned int *)(BOUNCE_FLAG_ADDR) = 1; // Bounce flag on
     }
+
+    r0 = r12 + r10;
 
     // return properly
     asm("mr 12, %0\n"
         "mr 5, %1\n"
         "mr 10, %2\n"
+        "mr 0, %3\n"
+        "mr 30, %4\n"
+        "stw 0, 0x88(30)\n"
         "cmplw 10, 4\n"
         :
-        :"r"(r12), "r"(r5), "r"(r10)
+        :"r"(r12), "r"(r5), "r"(r10), "r"(r0), "r"(r30)
         :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
     );
 }
