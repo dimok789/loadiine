@@ -79,6 +79,8 @@ PROVIDE(recv = 0x10c0aec);
 
 /* OS methods */
 PROVIDE(__os_snprintf = 0x102f09c);
+PROVIDE(OSFatal = 0x1031368);
+PROVIDE(OSSetExceptionCallbackEx = 0x010443f8);
 
 /* Standard library methods */
 PROVIDE(memcpy = 0x1035a68);
