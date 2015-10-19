@@ -66,7 +66,7 @@ struct bss_t {
     char mount_base[255]; // ex : /vol/external01/nesr
     char save_base[255]; // ex : /vol/external01/_SAV/nesr
 	volatile int saveFolderChecked;
-	volatile void* savePointer;
+	volatile void* save_folder_creation_client;
 };
 
 #define bss_ptr (*(struct bss_t **)0x100000e4)

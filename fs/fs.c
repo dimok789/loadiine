@@ -208,9 +208,9 @@ DECL(int, FSDelClient, void *pClient) {
 }
 
 DECL(int, FSAddClientEx, void *pClient, void *r4, void *r5) {
-	if(bss.saveFolderChecked == SAVE_CREATING){ // Skip if this the first call or the creation is done
-			if(pClient != bss.savePointer){ //ignore the waiting when the save creation wants to add a client
-				while(bss.saveFolderChecked != SAVE_DONE) // //wait until folder are created	
+	if(bss.saveFolderChecked == SAVE_CREATING){ 
+			if(pClient != bss.save_folder_creation_client){ // block every other client until the save folder creation is done
+				while(bss.saveFolderChecked != SAVE_DONE) 
 					GX2WaitForVsync(); 					
 			}
 	}
@@ -218,7 +218,7 @@ DECL(int, FSAddClientEx, void *pClient, void *r4, void *r5) {
 	
     if ((int)bss_ptr != 0x0a000000 && res >= 0) {
         if (*(int*)(RPX_NAME) != 0) {			
-			// create game save path
+			int client;
 			if(bss.saveFolderChecked == SAVE_FIRST_CALL){	
 				bss.saveFolderChecked = SAVE_CREATING;
 				// Create client and cmd block
@@ -226,10 +226,10 @@ DECL(int, FSAddClientEx, void *pClient, void *r4, void *r5) {
 				FSCmdBlock* pCmd = (FSCmdBlock*)malloc(sizeof(FSCmdBlock));
 				if (pClient && pCmd)
 					{
-					//calls this function indirectly again, so we need find the call again
-					bss.savePointer = pClient;
+					// need to save the pointer of our client to find it again where adding our client to the FS
+					bss.save_folder_creation_client = pClient;
 					// Add client to FS.
-					int client = FSAddClient(pClient, FS_RET_NO_ERROR); 	
+					client = FSAddClient(pClient, FS_RET_NO_ERROR); 	
 					// Init command block.
 					FSInitCmdBlock(pCmd);
 					
@@ -250,7 +250,7 @@ DECL(int, FSAddClientEx, void *pClient, void *r4, void *r5) {
 				}
 			}
 			
-            int client = client_num_alloc(pClient);
+            client = client_num_alloc(pClient);
             if (client >= 0) {
                 if (fs_connect(&bss.socket_fs[client]) != 0)
                     client_num_free(client);
@@ -588,25 +588,28 @@ DECL(int, FSRemoveAsync, void *pClient, void *pCmd, char *path, int error, FSAsy
  * Create save folder
  * ****************************************************************************/
 void checkSaveFolder(void * pClient, void * pCmd,int handle){
+	
 	int client = GetCurClient(pClient, pCmd);
 	unsigned int nn_act_handle;
-	unsigned long (*GetPersistentIdEx)(unsigned char);	
+	unsigned long (*GetPersistentIdEx)(unsigned char);
 	int (*GetSlotNo)(void);
 	void (*nn_Initialize)(void);
 	void (*nn_Finalize)(void);
-	OSDynLoad_Acquire("nn_act.rpl", &nn_act_handle);	
+	OSDynLoad_Acquire("nn_act.rpl", &nn_act_handle);
 	OSDynLoad_FindExport(nn_act_handle, 0, "GetPersistentIdEx__Q2_2nn3actFUc", &GetPersistentIdEx);
 	OSDynLoad_FindExport(nn_act_handle, 0, "GetSlotNo__Q2_2nn3actFv", &GetSlotNo);
 	OSDynLoad_FindExport(nn_act_handle, 0, "Initialize__Q2_2nn3actFv", &nn_Initialize);
 	OSDynLoad_FindExport(nn_act_handle, 0, "Finalize__Q2_2nn3actFv", &nn_Finalize);
 	
+	log_string(bss.socket_fs[client], "TRYING TO GET PERSISTENT ID", BYTE_LOG_STR);
+	
 	nn_Initialize(); // To be sure that it is really Initialized
 	
 	unsigned char slotno = GetSlotNo();
 	long idlong = GetPersistentIdEx(slotno);
-	log_string(bss.socket_fs[client], "TRYING TO GET PERSISTENT ID", BYTE_LOG_STR);
+	
 	if(idlong >= 0x80000000 && idlong <= 0x90000000 ){
-		char savepath[255];
+		char savepath[strlen(CAFE_OS_SD_PATH)+strlen(SD_SAVES_PATH)+strlen((char *)GAME_DIR_NAME)+1+8+1];
 		log_string(bss.socket_fs[client], "SUCCESS", BYTE_LOG_STR);
 		__os_snprintf(savepath, sizeof(savepath), "%s%s/%s/%08x", CAFE_OS_SD_PATH, SD_SAVES_PATH, (char *)GAME_DIR_NAME,idlong);	
 		log_string(bss.socket_fs[client], savepath, BYTE_LOG_STR);
