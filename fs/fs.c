@@ -135,34 +135,14 @@ static void compute_new_path(char* new_path, char* path, int len, int is_save) {
         for (n = 0; n < sizeof(bss.save_base) && bss.save_base[n] != 0; n++)
             new_path[n] = bss.save_base[n];
         new_path[n++] = '/';
-
-        // Create path for common and user dirs
-        if (path[10 + path_offset] == 'c') // common dir ("common")
-        {
-            new_path[n++] = 'c';
-			// copy the save game filename now with the slash at the beginning
-            for (i = 0; i < (len - 16 - path_offset); i++) {
-                char cChar = path[16 + path_offset + i];
-				// skip double slashes
-				if((new_path[n-1] == '/') && (cChar == '/')) {
-					continue;
-				}
-				new_path[n++] = cChar;
+		for (i = 0; i < (len - 10 - path_offset); i++) {
+			char cChar = path[10 + path_offset + i];
+			// skip double slashes
+			if((new_path[n-1] == '/') && (cChar == '/')) {
+				continue;
 			}
-        }
-        else if (path[10 + path_offset] == '8') // user dir ("800000??") ?? = user permanent id
-        {
-            new_path[n++] = 'u';
-			// copy the save game filename now with the slash at the beginning
-            for (i = 0; i < (len - 18 - path_offset); i++) {
-               char cChar = path[18 + path_offset + i];
-				// skip double slashes
-				if((new_path[n-1] == '/') && (cChar == '/')) {
-					continue;
-				}
-				new_path[n++] = cChar;
-			}
-        }
+			new_path[n++] = cChar;
+		}      
         new_path[n++] = '\0';
     }
 }
@@ -215,21 +195,6 @@ DECL(int, FSShutdown, void) {
     return real_FSShutdown();
 }
 
-DECL(int, FSAddClientEx, void *r3, void *r4, void *r5) {
-    int res = real_FSAddClientEx(r3, r4, r5);
-
-    if ((int)bss_ptr != 0x0a000000 && res >= 0) {
-        if (*(int*)(RPX_NAME) != 0) {
-            int client = client_num_alloc(r3);
-            if (client >= 0) {
-                if (fs_connect(&bss.socket_fs[client]) != 0)
-                    client_num_free(client);
-            }
-        }
-    }
-
-    return res;
-}
 DECL(int, FSDelClient, void *pClient) {
     if ((int)bss_ptr != 0x0a000000) {
         int client = client_num(pClient);
@@ -240,6 +205,59 @@ DECL(int, FSDelClient, void *pClient) {
     }
 
     return real_FSDelClient(pClient);
+}
+
+DECL(int, FSAddClientEx, void *pClient, void *r4, void *r5) {
+	if(bss.saveFolderChecked == SAVE_CREATING){ // Skip if this the first call or the creation is done
+			if(pClient != bss.savePointer){ //ignore the waiting when the save creation wants to add a client
+				while(bss.saveFolderChecked != SAVE_DONE) // //wait until folder are created	
+					GX2WaitForVsync(); 					
+			}
+	}
+	int res = real_FSAddClientEx(pClient, r4, r5);
+	
+    if ((int)bss_ptr != 0x0a000000 && res >= 0) {
+        if (*(int*)(RPX_NAME) != 0) {			
+			// create game save path
+			if(bss.saveFolderChecked == SAVE_FIRST_CALL){	
+				bss.saveFolderChecked = SAVE_CREATING;
+				// Create client and cmd block
+				FSClient* pClient = (FSClient*)malloc(sizeof(FSClient));
+				FSCmdBlock* pCmd = (FSCmdBlock*)malloc(sizeof(FSCmdBlock));
+				if (pClient && pCmd)
+					{
+					//calls this function indirectly again, so we need find the call again
+					bss.savePointer = pClient;
+					// Add client to FS.
+					int client = FSAddClient(pClient, FS_RET_NO_ERROR); 	
+					// Init command block.
+					FSInitCmdBlock(pCmd);
+					
+					/*	if (!bss.sd_mount[client])
+							bss.sd_mount[client] = fs_mount_sd(bss.socket_fs[client], pClient, pCmd); */
+							
+					GetCurClient(pClient, pCmd); //mounts the sd card
+					
+					if(bss.sd_mount[client]){
+						log_string(bss.socket_fs[client], "CHECKING THE SAVE FOLDER STRUCTURE", BYTE_LOG_STR);						
+						checkSaveFolder(pClient, pCmd,0);
+					}
+					
+					FSDelClient(pClient);					
+					free(pClient);
+					free(pCmd);
+					bss.saveFolderChecked = SAVE_DONE;
+				}
+			}
+			
+            int client = client_num_alloc(pClient);
+            if (client >= 0) {
+                if (fs_connect(&bss.socket_fs[client]) != 0)
+                    client_num_free(client);
+            }
+        }
+    }
+    return res;
 }
 
 // TODO: make new_path dynamically allocated from heap and not on stack to avoid stack overflow on too long names
@@ -564,6 +582,47 @@ DECL(int, FSRemoveAsync, void *pClient, void *pCmd, char *path, int error, FSAsy
         }
     }
     return real_FSRemoveAsync(pClient, pCmd, path, error, asyncParams);
+}
+
+/* *****************************************************************************
+ * Create save folder
+ * ****************************************************************************/
+void checkSaveFolder(void * pClient, void * pCmd,int handle){
+	int client = GetCurClient(pClient, pCmd);
+	unsigned int nn_act_handle;
+	unsigned long (*GetPersistentIdEx)(unsigned char);	
+	int (*GetSlotNo)(void);
+	void (*nn_Initialize)(void);
+	void (*nn_Finalize)(void);
+	OSDynLoad_Acquire("nn_act.rpl", &nn_act_handle);	
+	OSDynLoad_FindExport(nn_act_handle, 0, "GetPersistentIdEx__Q2_2nn3actFUc", &GetPersistentIdEx);
+	OSDynLoad_FindExport(nn_act_handle, 0, "GetSlotNo__Q2_2nn3actFv", &GetSlotNo);
+	OSDynLoad_FindExport(nn_act_handle, 0, "Initialize__Q2_2nn3actFv", &nn_Initialize);
+	OSDynLoad_FindExport(nn_act_handle, 0, "Finalize__Q2_2nn3actFv", &nn_Finalize);
+	
+	nn_Initialize(); // To be sure that it is really Initialized
+	
+	unsigned char slotno = GetSlotNo();
+	long idlong = GetPersistentIdEx(slotno);
+	log_string(bss.socket_fs[client], "TRYING TO GET PERSISTENT ID", BYTE_LOG_STR);
+	if(idlong >= 0x80000000 && idlong <= 0x90000000 ){
+		char savepath[255];
+		log_string(bss.socket_fs[client], "SUCCESS", BYTE_LOG_STR);
+		__os_snprintf(savepath, sizeof(savepath), "%s%s/%s/%08x", CAFE_OS_SD_PATH, SD_SAVES_PATH, (char *)GAME_DIR_NAME,idlong);	
+		log_string(bss.socket_fs[client], savepath, BYTE_LOG_STR);
+		log_string(bss.socket_fs[client], "CHECK IF FOLDER ALREADY EXISTS", BYTE_LOG_STR);
+		if (real_FSOpenDir(pClient, pCmd, savepath, &handle, FS_RET_ALL_ERROR) == FS_STATUS_OK) {		
+			log_string(bss.socket_fs[client], "ALREADY EXISTING", BYTE_LOG_STR);
+		    FSCloseDir(pClient, pCmd, handle, FS_RET_NO_ERROR);
+		}else {
+			log_string(bss.socket_fs[client], "CREATING SAVE PATH", BYTE_LOG_STR);
+			real_FSMakeDir(pClient, pCmd, savepath, FS_RET_ALL_ERROR);
+		 }
+	}else{
+		log_string(bss.socket_fs[client], "FAILED", BYTE_LOG_STR);
+	}
+	
+	nn_Finalize(); //must be called an equal number of times to nn_Initialize
 }
 
 /* *****************************************************************************

@@ -31,6 +31,8 @@ PROVIDE(FSInit = 0x10683c8);
 PROVIDE(FSShutdown = 0x1068538);
 PROVIDE(FSAddClientEx = 0x10685fc);
 PROVIDE(FSDelClient = 0x1068a08);
+PROVIDE(FSAddClient = 0x010689fc);
+PROVIDE(FSInitCmdBlock = 0x01068c54);
 
 /* FS methods for path replacement */
 PROVIDE(FSOpenFile = 0x106ef7c);
@@ -79,12 +81,18 @@ PROVIDE(recv = 0x10c0aec);
 
 /* OS methods */
 PROVIDE(__os_snprintf = 0x102f09c);
+PROVIDE(OSDynLoad_FindExport = 0x102b790);
+PROVIDE(OSDynLoad_Acquire = 0x102a31c);
 
 /* Standard library methods */
 PROVIDE(memcpy = 0x1035a68);
 PROVIDE(memset = 0x1035a54);
 PROVIDE(MEMAllocFromDefaultHeapEx = 0x1004e9c0);
 PROVIDE(MEMAllocFromExpHeapEx = 0x010497b0);
+PROVIDE(MEMAllocFromDefaultHeap = 0x100b4878);
+PROVIDE(MEMFreeToDefaultHeap = 0x100b487c);
 
 /* OS data */
 PROVIDE(title_id = 0x100136D0);
+
+

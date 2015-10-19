@@ -7,7 +7,11 @@
 void *memcpy(void *dst, const void *src, int bytes);
 void *memset(void *dst, int val, int bytes);
 extern void *(* const MEMAllocFromDefaultHeapEx)(int size, int align);
+extern void *(* const MEMAllocFromDefaultHeap)(int size);
+extern void *(* const MEMFreeToDefaultHeap)(void *ptr);
 #define memalign (*MEMAllocFromDefaultHeapEx)
+#define malloc (*MEMAllocFromDefaultHeap)
+#define free (*MEMFreeToDefaultHeap)
 
 /* socket.h */
 #define AF_INET         2
@@ -38,10 +42,18 @@ struct sockaddr_in {
 
 /* OS stuff */
 extern const long long title_id;
+/* Libs */
+extern int OSDynLoad_Acquire(char* rpl, uint *handle);
+extern int OSDynLoad_FindExport(uint handle, int isdata, char *symbol, void *address);
 
 /* SDCard functions */
 extern FSStatus FSGetMountSource(void *pClient, void *pCmd, FSSourceType type, FSMountSource *source, FSRetFlag errHandling);
 extern FSStatus FSMount(void *pClient, void *pCmd, FSMountSource *source, char *target, uint bytes, FSRetFlag errHandling);
+
+/* FS Functions */
+extern FSStatus FSAddClient(FSClient *pClient, FSRetFlag errHandling);
+extern void FSInitCmdBlock(FSCmdBlock *pCmd);
+extern FSStatus FSCloseDir(FSClient *pClient, FSCmdBlock *pCmd, int dh, FSRetFlag errHandling);
 
 /* Forward declarations */
 #define MAX_CLIENT 32
@@ -53,6 +65,8 @@ struct bss_t {
     int sd_mount[MAX_CLIENT];
     char mount_base[255]; // ex : /vol/external01/nesr
     char save_base[255]; // ex : /vol/external01/_SAV/nesr
+	volatile int saveFolderChecked;
+	volatile void* savePointer;
 };
 
 #define bss_ptr (*(struct bss_t **)0x100000e4)
@@ -62,6 +76,8 @@ int  fs_connect(int *socket);
 void fs_disconnect(int socket);
 int  fs_mount_sd(int sock, void* pClient, void* pCmd);
 void log_string(int sock, const char* str, char byte);
+void checkSaveFolder(void * pClient, void * pCmd,int handle);
+
 
 /* Communication bytes with the server */
 #define BYTE_NORMAL             0xff
@@ -103,5 +119,13 @@ void log_string(int sock, const char* str, char byte);
 #define BYTE_MOUNT_SD           0x30
 #define BYTE_MOUNT_SD_OK        0x31
 #define BYTE_MOUNT_SD_BAD       0x32
+
+/* Savefolder creation states */
+#define SAVE_FIRST_CALL         0x00
+#define SAVE_CREATING      	    0x01
+#define SAVE_DONE               0x02
+
+/* OTHER STUFF */
+#define NO_SOCK       			-1
 
 #endif /* _FS_H */

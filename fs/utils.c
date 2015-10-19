@@ -13,14 +13,14 @@ int fs_connect(int *psock) {
 
     // No ip means that we don't have any server running, so no logs
     if (server_ip == 0) {
-        *psock = -1;
+        *psock = NO_SOCK;
         return 0;
     }
 
     socket_lib_init();
 
     sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    CHECK_ERROR(sock == -1);
+    CHECK_ERROR(sock == NO_SOCK);
 
     addr.sin_family = AF_INET;
     addr.sin_port = 7332;
@@ -36,15 +36,15 @@ int fs_connect(int *psock) {
     return 0;
 
 error:
-    if (sock != -1)
+    if (sock != NO_SOCK)
         socketclose(sock);
 
-    *psock = -1;
+    *psock = NO_SOCK;
     return -1;
 }
 
 void fs_disconnect(int sock) {
-    CHECK_ERROR(sock == -1);
+    CHECK_ERROR(sock == NO_SOCK);
     socketclose(sock);
 error:
     return;
@@ -57,7 +57,7 @@ int fs_mount_sd(int sock, void* pClient, void* pCmd) {
     int is_mounted = 0;
     char buffer[1];
 
-    if (sock != -1) {
+    if (sock != NO_SOCK) {
         buffer[0] = BYTE_MOUNT_SD;
         sendwait(sock, buffer, 1);
     }
@@ -76,7 +76,7 @@ int fs_mount_sd(int sock, void* pClient, void* pCmd) {
         }
     }
 
-    if (sock != -1) {
+    if (sock != NO_SOCK) {
         buffer[0] = is_mounted ? BYTE_MOUNT_SD_OK : BYTE_MOUNT_SD_BAD;
         sendwait(sock, buffer, 1);
     }
@@ -86,7 +86,7 @@ int fs_mount_sd(int sock, void* pClient, void* pCmd) {
 }
 
 void log_string(int sock, const char* str, char flag_byte) {
-    if(sock == -1) {
+    if(sock == NO_SOCK) {
 		return;
 	}
     while (bss.lock) GX2WaitForVsync();
