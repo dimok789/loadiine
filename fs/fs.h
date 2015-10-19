@@ -63,8 +63,8 @@ struct bss_t {
     int sd_mount[MAX_CLIENT];
     char mount_base[255]; // ex : /vol/external01/nesr
     char save_base[255]; // ex : /vol/external01/_SAV/nesr
-	volatile int saveFolderChecked;
-	volatile void* save_folder_creation_client;
+	volatile int onStartHook;
+	volatile void* on_start_hook_client;
 };
 
 #define bss_ptr (*(struct bss_t **)0x100000e4)
@@ -74,6 +74,7 @@ int  fs_connect(int *socket);
 void fs_disconnect(int socket);
 int  fs_mount_sd(int sock, void* pClient, void* pCmd);
 void log_string(int sock, const char* str, char byte);
+void on_start(void * pClient, void * pCmd);
 void checkSaveFolder(void * pClient, void * pCmd,int handle);
 
 
@@ -119,9 +120,11 @@ void checkSaveFolder(void * pClient, void * pCmd,int handle);
 #define BYTE_MOUNT_SD_BAD       0x32
 
 /* Savefolder creation states */
-#define SAVE_FIRST_CALL         0x00
-#define SAVE_CREATING      	    0x01
-#define SAVE_DONE               0x02
+#define ON_START_HOOK_START           0x00
+#define ON_START_HOOK_PREPARING       0x01
+#define ON_START_HOOK_IN_CALL         0x02
+#define ON_START_DONE                 0x03
+#define ON_START_FAILED               0x04
 
 /* OTHER STUFF */
 #define NO_SOCK       			-1

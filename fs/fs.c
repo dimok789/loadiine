@@ -212,45 +212,58 @@ DECL(int, FSDelClient, void *pClient) {
 }
 
 DECL(int, FSAddClientEx, void *pClient, void *r4, void *r5) {
-	if(bss.saveFolderChecked == SAVE_CREATING){ 
-			if(pClient != bss.save_folder_creation_client){ // block every other client until the save folder creation is done
-				while(bss.saveFolderChecked != SAVE_DONE) 
+	if(bss.onStartHook == ON_START_HOOK_PREPARING || bss.onStartHook == ON_START_HOOK_IN_CALL){ 
+			if(pClient != bss.on_start_hook_client){ // block every other client until the on_start method is done
+				while(bss.onStartHook != ON_START_DONE || bss.onStartHook != ON_START_FAILED) 
 					GX2WaitForVsync(); 					
 			}
 	}
 	int res = real_FSAddClientEx(pClient, r4, r5);
 	
     if ((int)bss_ptr != 0x0a000000 && res >= 0) {
-        if (*(int*)(RPX_NAME) != 0) {			
-			int client;
-			if(bss.saveFolderChecked == SAVE_FIRST_CALL){	
-				bss.saveFolderChecked = SAVE_CREATING;
+        if (*(int*)(RPX_NAME) != 0) {
+			int client,error = 0;
+			if(bss.onStartHook == ON_START_HOOK_START){	
+				
+				bss.onStartHook = ON_START_HOOK_PREPARING;
 				// Create client and cmd block
-				FSClient* pClient = (FSClient*)malloc(sizeof(FSClient));
+				FSClient* pClient_ = (FSClient*)malloc(sizeof(FSClient));
 				FSCmdBlock* pCmd = (FSCmdBlock*)malloc(sizeof(FSCmdBlock));
-				if (pClient && pCmd)
-					{
+				if (pClient_ && pCmd){
 					// need to save the pointer of our client to find it again where adding our client to the FS
-					bss.save_folder_creation_client = pClient;
+					bss.on_start_hook_client = pClient_;
 					// Add client to FS.
-					client = FSAddClient(pClient, FS_RET_NO_ERROR); 	
-					// Init command block.
-					FSInitCmdBlock(pCmd);
-					
-					/*	if (!bss.sd_mount[client])
-							bss.sd_mount[client] = fs_mount_sd(bss.socket_fs[client], pClient, pCmd); */
-							
-					GetCurClient(pClient, pCmd); //mounts the sd card
-					
-					if(bss.sd_mount[client]){
-						log_string(bss.socket_fs[client], "CHECKING THE SAVE FOLDER STRUCTURE", BYTE_LOG_STR);						
-						checkSaveFolder(pClient, pCmd,0);
+					if(FSAddClient(pClient_, FS_RET_ALL_ERROR) >= 0){ 
+						client = client_num(pClient_);
+						log_string(bss.socket_fs[client], "Trying to call FSInitCmdBlock", BYTE_LOG_STR);
+						// Init command block.
+						FSInitCmdBlock(pCmd);
+						log_string(bss.socket_fs[client], "FSInitCmdBlock done", BYTE_LOG_STR);
+						
+						/*	if (!bss.sd_mount[client])
+								bss.sd_mount[client] = fs_mount_sd(bss.socket_fs[client], pClient, pCmd); */
+								
+						client = GetCurClient(pClient_, pCmd); // also mounts the sd card	
+						log_string(bss.socket_fs[client], "GetCurClient done", BYTE_LOG_STR);
+						if(bss.sd_mount[client]){
+							bss.onStartHook = ON_START_HOOK_IN_CALL;
+							on_start(pClient_,pCmd);
+						}else{
+							error = 3;
+							bss.onStartHook = ON_START_FAILED;	
+						}
+						FSDelClient(pClient_);
+					}else{
+						error = 2;
+						bss.onStartHook = ON_START_FAILED;
 					}
-					
-					FSDelClient(pClient);					
-					free(pClient);
+					free(pClient_);
 					free(pCmd);
-					bss.saveFolderChecked = SAVE_DONE;
+					if(bss.onStartHook != ON_START_FAILED) 
+						bss.onStartHook = ON_START_DONE;
+				}else{
+					error = 1;
+					bss.onStartHook = ON_START_FAILED;
 				}
 			}
 			
@@ -258,6 +271,16 @@ DECL(int, FSAddClientEx, void *pClient, void *r4, void *r5) {
             if (client >= 0) {
                 if (fs_connect(&bss.socket_fs[client]) != 0)
                     client_num_free(client);
+				else if(error){				
+					if(error == 1)
+						log_string(bss.socket_fs[client], "error while malloc for pClient and pCmd", BYTE_LOG_STR);
+					if(error == 2)
+						log_string(bss.socket_fs[client], "FSAddClient failed for the hook client", BYTE_LOG_STR);
+					if(error == 3)
+						log_string(bss.socket_fs[client], "sdcard is not mounted", BYTE_LOG_STR);
+					
+					log_string(bss.socket_fs[client], "onStartHook failed (create your save folders to get the game working!)", BYTE_LOG_STR);
+				}
             }
         }
     }
@@ -588,11 +611,22 @@ DECL(int, FSRemoveAsync, void *pClient, void *pCmd, char *path, int error, FSAsy
     return real_FSRemoveAsync(pClient, pCmd, path, error, asyncParams);
 }
 
+
+/* *****************************************************************************
+ * Hook, called on game start before the first client is added
+ * ****************************************************************************/
+void on_start(void * pClient, void * pCmd){
+	int client = GetCurClient(pClient, pCmd);
+	log_string(bss.socket_fs[client], "CHECKING THE SAVE FOLDER STRUCTURE", BYTE_LOG_STR);	
+	int handle = 0;
+	checkSaveFolder(pClient, pCmd,handle);
+}
+
+
 /* *****************************************************************************
  * Create save folder
  * ****************************************************************************/
-void checkSaveFolder(void * pClient, void * pCmd,int handle){
-	
+void checkSaveFolder(void * pClient, void * pCmd,int handle){	
 	int client = GetCurClient(pClient, pCmd);
 	unsigned int nn_act_handle;
 	unsigned long (*GetPersistentIdEx)(unsigned char);
