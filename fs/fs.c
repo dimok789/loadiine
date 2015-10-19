@@ -609,7 +609,7 @@ void checkSaveFolder(void * pClient, void * pCmd,int handle){
 	long idlong = GetPersistentIdEx(slotno);
 	
 	if(idlong >= 0x80000000 && idlong <= 0x90000000 ){
-		char savepath[strlen(CAFE_OS_SD_PATH)+strlen(SD_SAVES_PATH)+strlen((char *)GAME_DIR_NAME)+1+8+1];
+		char savepath[strlen(CAFE_OS_SD_PATH)+strlen(SD_SAVES_PATH)+1+strlen((char *)GAME_DIR_NAME)+1+8+1];
 		log_string(bss.socket_fs[client], "SUCCESS", BYTE_LOG_STR);
 		__os_snprintf(savepath, sizeof(savepath), "%s%s/%s/%08x", CAFE_OS_SD_PATH, SD_SAVES_PATH, (char *)GAME_DIR_NAME,idlong);	
 		log_string(bss.socket_fs[client], savepath, BYTE_LOG_STR);
