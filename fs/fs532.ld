@@ -83,6 +83,9 @@ PROVIDE(recv = 0x10c0aec);
 PROVIDE(__os_snprintf = 0x102f09c);
 PROVIDE(OSDynLoad_FindExport = 0x102b790);
 PROVIDE(OSDynLoad_Acquire = 0x102a31c);
+PROVIDE(OSFatal = 0x1031368);
+PROVIDE(OSSetExceptionCallbackEx = 0x010443f8);
+
 
 /* Standard library methods */
 PROVIDE(memcpy = 0x1035a68);
