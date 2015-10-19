@@ -1,4 +1,5 @@
 #include "fs.h"
+#include "exception_handler.h"
 #include "../common/common.h"
 
 #define DECL(res, name, ...) \
@@ -177,6 +178,9 @@ DECL(int, FSInit, void) {
     if ((int)bss_ptr == 0x0a000000) {
         bss_ptr = memalign(sizeof(struct bss_t), 0x40);
         memset(bss_ptr, 0, sizeof(struct bss_t));
+
+        // setup exceptions
+        setup_os_exceptions();
 
         // create game mount path prefix
         __os_snprintf(bss.mount_base, sizeof(bss.mount_base), "%s%s/%s%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, (char *)GAME_DIR_NAME, CONTENT_PATH);

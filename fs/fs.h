@@ -25,8 +25,6 @@ extern int connect(int socket, void *addr, int addrlen);
 extern int send(int socket, const void *buffer, int size, int flags);
 extern int recv(int socket, void *buffer, int size, int flags);
 
-extern int __os_snprintf(char* s, int n, const char * format, ...);
-
 extern void GX2WaitForVsync(void);
 
 

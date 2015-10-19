@@ -1,6 +1,19 @@
 #include "loader.h"
 #include "../common/common.h"
 
+// dbcf and icbi flush/invalidate 0x20 bytes but we can't be sure that our 4 bytes are all in the same block, so call it for first and last byte
+#define FlushBlock(addr)   asm volatile("dcbf %0, %1\n"                                \
+                                        "dcbf %0, %2\n"                                \
+                                        "icbi %0, %1\n"                                \
+                                        "icbi %0, %2\n"                                \
+                                        "sync\n"                                       \
+                                        "eieio\n"                                      \
+                                        "isync\n"                                      \
+                                        :                                              \
+                                        :"r"(0), "r"((addr)), "r"(((addr) + 3))        \
+                                        :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"     \
+                                        );
+
 // Instruction address after LiWaitOneChunk
 #define LI_WAIT_ONE_CHUNK_AFTER_ADDR    (0x01009120)
 #define LI_WAIT_ONE_CHUNK2_AFTER_ADDR   (0x0100b6ec)
@@ -14,7 +27,7 @@ void LOADER_Start(void)
 {
     // Save registers
     int r4, r6, r12;
-    asm("mr %0, 4\n"
+    asm volatile("mr %0, 4\n"
         "mr %1, 6\n"
         "mr %2, 12\n"
         :"=r"(r4), "=r"(r6), "=r"(r12)
@@ -37,14 +50,14 @@ void LOADER_Start(void)
     }
 
     // return properly
-    asm("mr 4, %0\n"
+    asm volatile("mr 4, %0\n"
         "mr 6, %1\n"
         "mr 12, %2\n"
         :
         :"r"(r4), "r"(r6), "r"(r12)
         :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
     );
-    asm("slwi 6, 12, 2\n");
+    asm volatile("slwi 6, 12, 2\n");
 }
 
 /* LOADER_Entry ****************************************************************
@@ -55,7 +68,7 @@ void LOADER_Entry(void)
 {
     // Save registers
     int r30;
-    asm("mr %0, 30\n"
+    asm volatile("mr %0, 30\n"
         :"=r"(r30)
         :
         :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
@@ -65,7 +78,7 @@ void LOADER_Entry(void)
     *(volatile unsigned int *)(RPL_REPLACE_ADDR) = 0;      // Reset
 
     // return properly
-    asm("mr 30, %0\n"
+    asm volatile("mr 30, %0\n"
         "lwz 26, 0(30)\n"
         :
         :"r"(r30)
@@ -81,7 +94,7 @@ void LOADER_Prep(void)
 {
     // Save registers
     int r29;
-    asm("mr %0, 29\n"
+    asm volatile("mr %0, 29\n"
         :"=r"(r29)
         :
         :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
@@ -125,13 +138,21 @@ void LOADER_Prep(void)
 
                 // Patch the loader instruction after LiWaitOneChunk to say : yes it's ok I have data =)
                 *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK_AFTER_ADDR)) = 0x2c120000; // cmpwi r18, 0
+                FlushBlock((0xC1000000 + LI_WAIT_ONE_CHUNK_AFTER_ADDR));
                 break;
             }
         }
     }
 
     // return properly
-    asm("lis 24, -7\n");
+    asm volatile("lis 24, -7\n"
+        "lis 23, -0x1020\n"
+        "lwzu 4, 0x1000(23)\n"
+        "mr 29, %0\n"
+        :
+        :"r"(r29)
+        :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
+    );
 }
 
 /* LiLoadRPLBasics_in_1_load ***************************************************
@@ -143,7 +164,7 @@ void LiLoadRPLBasics_in_1_load(void)
 {
     // save registers
     int r23;
-    asm("mr %0, 23\n"
+    asm volatile("mr %0, 23\n"
         :"=r"(r23)
         :
         :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
@@ -165,6 +186,7 @@ void LiLoadRPLBasics_in_1_load(void)
 
             // Restore original instruction after LiWaitOneChunk
             *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK_AFTER_ADDR)) = 0x7c7f1b79; // mr. r31, r3
+            FlushBlock((0xC1000000 + LI_WAIT_ONE_CHUNK_AFTER_ADDR));
         }
         else
         {
@@ -197,6 +219,7 @@ void LiLoadRPLBasics_in_1_load(void)
 
                 // Patch the loader instruction after LiWaitOneChunk (in GetNextBounce)
                 *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER_ADDR)) = 0x60000000; // nop
+                FlushBlock((0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER_ADDR));
             }
 
             for (int i = 0; i < (size / 4); i++)
@@ -243,7 +266,7 @@ void LiLoadRPLBasics_in_1_load(void)
     }
 
     // return properly
-    asm("mr 3, %0\n"
+    asm volatile("mr 3, %0\n"
         :
         :"r"(r23)
     );
@@ -257,7 +280,7 @@ void LiSetupOneRPL_after(void)
 {
     // Save registers
     int r30;
-    asm("mr %0, 30\n"
+    asm volatile("mr %0, 30\n"
         :"=r"(r30)
         :
         :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
@@ -270,10 +293,11 @@ void LiSetupOneRPL_after(void)
 
         // Restore original instruction after LiWaitOneChunk (in GetNextBounce)
         *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER_ADDR)) = 0x408200c0; // bne loc_100B7AC
+        FlushBlock((0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER_ADDR));
     }
 
     // Return properly
-    asm("mr 3, %0\n"
+    asm volatile("mr 3, %0\n"
         :
         :"r"(r30)
         );
@@ -290,13 +314,19 @@ void GetNextBounce_1(void)
     int r10; // size read, max 0x400000, or less if it is end of stream
     int r12; // read offset start : starts at 0x400000 + x * 0x800000
     int r5;  // read offset end   : read offset start + size read
-    asm("mr %0, 10\n"
+    int r6, r9, r30;
+    asm volatile("mr %0, 10\n"
         "mr %1, 12\n"
         "mr %2, 5\n" // r5 is originaly r9 but we patched it
-        :"=r"(r10), "=r"(r12), "=r"(r5)
+        "mr %3, 30\n"
+        "mr %4, 6\n"         // read out r6 which is than transformed to r9 by substract of r10
+        :"=r"(r10), "=r"(r12), "=r"(r5), "=r"(r30), "=r"(r9)
         :
         :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
     );
+
+    // substract r10 to get the value of r9 as what we loaded is actually r6
+    r9 = r9 - r10;
 
     // If it is active
     int is_active = *(volatile unsigned int *)(IS_ACTIVE_ADDR);
@@ -304,22 +334,28 @@ void GetNextBounce_1(void)
     {
         // Check if we need to adjust the read size and offset
         int size = *(volatile unsigned int *)(MEM_SIZE);
-        if (size < 0x400000)
-        {
-            r10 = size;         // set the new read size
-            r5 = r12 + r10;     // set the offset end
-        }
+        if (size > 0x400000)
+            size = 0x400000;
+
+        r10 = size;         // set the new read size
+        r5 = r12 + r10;     // set the offset end
 
         *(volatile unsigned int *)(BOUNCE_FLAG_ADDR) = 1; // Bounce flag on
     }
 
+    // store correct size
+    r6 = r9 + r10;
+
     // return properly
-    asm("mr 12, %0\n"
+    asm volatile("mr 12, %0\n"
         "mr 5, %1\n"
         "mr 10, %2\n"
+        "mr 6, %3\n"
+        "mr 30, %4\n"
+        "stw 6, 0x80(30)\n"
         "cmplw 10, 4\n"
         :
-        :"r"(r12), "r"(r5), "r"(r10)
+        :"r"(r12), "r"(r5), "r"(r10), "r"(r6), "r"(r30)
         :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
     );
 }
@@ -334,10 +370,12 @@ void GetNextBounce_2(void)
     int r10; // size read, max 0x400000, or less if it is end of stream
     int r12; // read offset start : starts at 0x800000 + x * 0x800000
     int r5;  // read offset end   : read offset start + size read
-    asm("mr %0, 10\n"
+    int r0, r30;
+    asm volatile("mr %0, 10\n"
         "mr %1, 12\n"
-        "mr %2, 5\n" // r5 is originaly r9 but it's been patched
-        :"=r"(r10), "=r"(r12), "=r"(r5)
+        "mr %2, 30\n"
+        "mr %3, 5\n" // r5 is originaly r9 but it's been patched
+        :"=r"(r10), "=r"(r12), "=r"(r30), "=r"(r5)
         :
         :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
     );
@@ -348,22 +386,27 @@ void GetNextBounce_2(void)
     {
         // Check if we need to adjust the read size and offset
         int size = *(volatile unsigned int *)(MEM_SIZE);
-        if (size < 0x400000)
-        {
-            r10 = size;         // set the new read size
-            r5 = r12 + r10;     // set the offset end
-        }
+        if (size > 0x400000)
+            size = 0x400000;
+
+        r10 = size;         // set the new read size
+        r5 = r12 + r10;     // set the offset end
 
         *(volatile unsigned int *)(BOUNCE_FLAG_ADDR) = 1; // Bounce flag on
     }
 
+    r0 = r12 + r10;
+
     // return properly
-    asm("mr 12, %0\n"
+    asm volatile("mr 12, %0\n"
         "mr 5, %1\n"
         "mr 10, %2\n"
+        "mr 0, %3\n"
+        "mr 30, %4\n"
+        "stw 0, 0x88(30)\n"
         "cmplw 10, 4\n"
         :
-        :"r"(r12), "r"(r5), "r"(r10)
+        :"r"(r12), "r"(r5), "r"(r10), "r"(r0), "r"(r30)
         :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
     );
 }
@@ -420,7 +463,7 @@ void LiRefillBounceBufferForReading_af_getbounce(void)
     }
 
     // return properly
-    asm("cmpwi 3, 0\n");
+    asm volatile("cmpwi 3, 0\n");
 }
 
 // A kind of magic used to store :
