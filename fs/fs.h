@@ -27,7 +27,6 @@ extern int recv(int socket, void *buffer, int size, int flags);
 
 extern void GX2WaitForVsync(void);
 
-
 struct in_addr {
     unsigned int s_addr;
 };
@@ -77,7 +76,6 @@ void log_string(int sock, const char* str, char byte);
 void on_start(void * pClient, void * pCmd);
 void checkSaveFolder(void * pClient, void * pCmd,int handle);
 
-
 /* Communication bytes with the server */
 #define BYTE_NORMAL             0xff
 #define BYTE_SPECIAL            0xfe
@@ -120,11 +118,15 @@ void checkSaveFolder(void * pClient, void * pCmd,int handle);
 #define BYTE_MOUNT_SD_BAD       0x32
 
 /* Savefolder creation states */
-#define ON_START_HOOK_START           0x00
-#define ON_START_HOOK_PREPARING       0x01
-#define ON_START_HOOK_IN_CALL         0x02
-#define ON_START_DONE                 0x03
-#define ON_START_FAILED               0x04
+#define ON_START_HOOK_START                  0x00
+#define ON_START_HOOK_PREPARING              0x01
+#define ON_START_HOOK_IN_CALL                0x02
+#define ON_START_DONE                        0x03
+#define ON_START_FAILED                      0x04
+
+#define FSADDCLIENTEX_HOOK_ERROR_MALLOC      0x01
+#define FSADDCLIENTEX_HOOK_ERROR_ADDCLIENT   0x02
+#define FSADDCLIENTEX_HOOK_ERROR_SDMOUNT     0x03
 
 /* OTHER STUFF */
 #define NO_SOCK       			-1
