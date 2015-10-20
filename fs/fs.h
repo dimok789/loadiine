@@ -75,8 +75,7 @@ int  fs_mount_sd(int sock, void* pClient, void* pCmd);
 void log_string(int sock, const char* str, char byte);
 void on_start(void * pClient, void * pCmd);
 void checkSaveFolder(void * pClient, void * pCmd,int handle);
-int do_FSAddClientEx_hook_stuff(void * pClient);
- 
+
 /* Communication bytes with the server */
 #define BYTE_NORMAL             0xff
 #define BYTE_SPECIAL            0xfe
