@@ -1,0 +1,4 @@
+installer/bin/*
+loader/build/*
+menu/build/*
+fs/build/*
