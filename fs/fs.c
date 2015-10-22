@@ -26,6 +26,7 @@ static void client_num_free(int client) {
     bss.pClient_fs[client] = 0;
     bss.sd_mount[client] = 0;
 }
+
 static int client_num(void *pClient) {
     int i;
     for (i = 0; i < MAX_CLIENT; i++)
@@ -231,7 +232,7 @@ DECL(int, FSAddClientEx, void *pClient, void *r4, void *r5) {
 					if(error == FSADDCLIENTEX_HOOK_ERROR_SDMOUNT)
 						log_string(bss.socket_fs[client], "sdcard is not mounted", BYTE_LOG_STR);
 					
-					log_string(bss.socket_fs[client], "FSAddClientEx_hook (create your save folders to get the game working!)", BYTE_LOG_STR);
+					log_string(bss.socket_fs[client], "FSAddClientEx_hook (failed to check/create the save folder. maybe you need to create the save folder now manually to get the saving working)", BYTE_LOG_STR);
 				}
 			}
 		}
@@ -632,7 +633,6 @@ void on_start(void * pClient, void * pCmd){
 	int handle = 0;
 	checkSaveFolder(pClient, pCmd,handle);
 }
-
 
 /* *****************************************************************************
  * Create save folder
