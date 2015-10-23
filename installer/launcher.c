@@ -2,13 +2,9 @@
 #include "elf_abi.h"
 #include "../../libwiiu/src/coreinit.h"
 #include "../../libwiiu/src/vpad.h"
+#include "../../libwiiu/src/socket.h"
 
 #if VER == 532
-    // Includes
-//    #include "menu532.h"
-//    #include "loader532.h"
-//    #include "fs532.h"
-
     // Function definitions
     #define SYSLaunchMiiStudio ((void (*)(void))0xDEAAEB8)
     #define _Exit ((void (*)(void))0x0101cd70)
@@ -18,17 +14,11 @@
     #define ICInvalidateRange ((void (*)(const void *addr, uint length))0x1024010)
 
     // Install addresses
-//    #define INSTALL_MENU_ADDR           0x011dd000  // where the menu is copied in memory
-//    #define INSTALL_LOADER_ADDR         0x011df000  // where the loader code is copied in memory
-    #define INSTALL_FS_ADDR             0x011e0000  // where the fs functions are copied in memory
+    #define INSTALL_FS_ADDR             0x011df800  // where the fs functions are copied in memory
 
     // Install flags
     #define INSTALL_FS_DONE_ADDR        (INSTALL_FS_ADDR - 0x4) // Used to know if fs is already installed
     #define INSTALL_FS_DONE_FLAG        0xCACACACA
-
-    // IP settings //
-	#define DEFAULT_SERVER_IP   0xC0A80102
-
 #endif
 
 #define PRINT_TEXT1(x, y, str) { OSScreenPutFontEx(1, x, y, str); }
@@ -88,11 +78,11 @@ typedef struct {
     void*(*MEMAllocFromDefaultHeapEx)(unsigned int size, unsigned int align);
     void(*MEMFreeToDefaultHeap)(void *ptr);
 
-	void*(*curl_easy_init)();
-	void(*curl_easy_setopt)(void *handle, unsigned int param, void *op);
-	int(*curl_easy_perform)(void *handle);
-	void(*curl_easy_getinfo)(void *handle, unsigned int param, void *op);
-	void (*curl_easy_cleanup)(void *handle);
+    void*(*curl_easy_init)();
+    void(*curl_easy_setopt)(void *handle, unsigned int param, void *op);
+    int(*curl_easy_perform)(void *handle);
+    void(*curl_easy_getinfo)(void *handle, unsigned int param, void *op);
+    void (*curl_easy_cleanup)(void *handle);
 } private_data_t;
 
 /* Install functions */
@@ -244,32 +234,31 @@ void _start()
 /* IP selection screen implemented by Maschell */
 static int show_ip_selection_screen(unsigned int coreinit_handle, unsigned int *ip_address)
 {
+    /************************************************************************/
+    // Prepare screen
+    void (*OSScreenInit)();
+    unsigned int (*OSScreenGetBufferSizeEx)(unsigned int bufferNum);
+    unsigned int (*OSScreenSetBufferEx)(unsigned int bufferNum, void * addr);
+    unsigned int (*OSScreenClearBufferEx)(unsigned int bufferNum, unsigned int temp);
+    unsigned int (*OSScreenFlipBuffersEx)(unsigned int bufferNum);
+    unsigned int (*OSScreenPutFontEx)(unsigned int bufferNum, unsigned int posX, unsigned int posY, void * buffer);
 
-   	/************************************************************************/
-	// Prepare screen
-	void (*OSScreenInit)();
-	unsigned int (*OSScreenGetBufferSizeEx)(unsigned int bufferNum);
-	unsigned int (*OSScreenSetBufferEx)(unsigned int bufferNum, void * addr);
-	unsigned int (*OSScreenClearBufferEx)(unsigned int bufferNum, unsigned int temp);
-	unsigned int (*OSScreenFlipBuffersEx)(unsigned int bufferNum);
-	unsigned int (*OSScreenPutFontEx)(unsigned int bufferNum, unsigned int posX, unsigned int posY, void * buffer);
-
-	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenInit", &OSScreenInit);
-	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenGetBufferSizeEx", &OSScreenGetBufferSizeEx);
-	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenSetBufferEx", &OSScreenSetBufferEx);
-	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenClearBufferEx", &OSScreenClearBufferEx);
-	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenFlipBuffersEx", &OSScreenFlipBuffersEx);
-	OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenPutFontEx", &OSScreenPutFontEx);
+    OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenInit", &OSScreenInit);
+    OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenGetBufferSizeEx", &OSScreenGetBufferSizeEx);
+    OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenSetBufferEx", &OSScreenSetBufferEx);
+    OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenClearBufferEx", &OSScreenClearBufferEx);
+    OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenFlipBuffersEx", &OSScreenFlipBuffersEx);
+    OSDynLoad_FindExport(coreinit_handle, 0, "OSScreenPutFontEx", &OSScreenPutFontEx);
 
 
-	/* ****************************************************************** */
-	/*                             IP Settings                            */
-	/* ****************************************************************** */
+    /* ****************************************************************** */
+    /*                             IP Settings                            */
+    /* ****************************************************************** */
 
-	// Set server ip
-	u_serv_ip ip;
-	ip.full = DEFAULT_SERVER_IP;
-	char msg[80];
+    // Set server ip
+    u_serv_ip ip;
+    ip.full = PC_IP;
+    char msg[80];
     // Prepare screen
     int screen_buf0_size = 0;
     int screen_buf1_size = 0;
@@ -294,48 +283,48 @@ static int show_ip_selection_screen(unsigned int coreinit_handle, unsigned int *
     OSScreenFlipBuffersEx(0);
     OSScreenFlipBuffersEx(1);
 
-	// Prepare vpad
-	unsigned int vpad_handle;
-	int (*VPADRead)(int controller, VPADData *buffer, unsigned int num, int *error);
-	OSDynLoad_Acquire("vpad.rpl", &vpad_handle);
-	OSDynLoad_FindExport(vpad_handle, 0, "VPADRead", &VPADRead);
+    // Prepare vpad
+    unsigned int vpad_handle;
+    int (*VPADRead)(int controller, VPADData *buffer, unsigned int num, int *error);
+    OSDynLoad_Acquire("vpad.rpl", &vpad_handle);
+    OSDynLoad_FindExport(vpad_handle, 0, "VPADRead", &VPADRead);
 
-	// Set server ip with buttons
-	uint8_t sel_ip = 3;
-	int error;
-	uint8_t update_screen = 1;         // refresh screen initially
-	VPADData vpad_data;
-	VPADRead(0, &vpad_data, 1, &error); //Read initial vpad status
-	int noip = 1;
-	int result = 0;
-	int delay = 0;
+    // Set server ip with buttons
+    uint8_t sel_ip = 3;
+    int error;
+    uint8_t update_screen = 1;         // refresh screen initially
+    VPADData vpad_data;
+    VPADRead(0, &vpad_data, 1, &error); //Read initial vpad status
+    int noip = 1;
+    int result = 0;
+    int delay = 0;
 
-	while (1)
-	{
-		// Print message
-		PRINT_TEXT1(24, 1, "-- LOADIINE --");
-		PRINT_TEXT1(0, 5, "1. Press A to install loadiine");
+    while (1)
+    {
+        // Print message
+        PRINT_TEXT1(24, 1, "-- LOADIINE --");
+        PRINT_TEXT1(0, 5, "1. Press A to install loadiine");
 
-		PRINT_TEXT1(0, 11, "2    (optional)");
-		PRINT_TEXT2(0, 12, "%s : %3d.%3d.%3d.%3d", "  a. Server IP", ip.digit[0], ip.digit[1], ip.digit[2], ip.digit[3]);
-		PRINT_TEXT1(0, 13, "  b. Press X to install loadiine with server settings");
-		PRINT_TEXT1(42, 17, "home button to exit ...");
+        PRINT_TEXT1(0, 11, "2    (optional)");
+        PRINT_TEXT2(0, 12, "%s : %3d.%3d.%3d.%3d", "  a. Server IP", ip.digit[0], ip.digit[1], ip.digit[2], ip.digit[3]);
+        PRINT_TEXT1(0, 13, "  b. Press X to install loadiine with server settings");
+        PRINT_TEXT1(42, 17, "home button to exit ...");
 
-		// Print ip digit selector
-		uint8_t x_shift = 17 + 4 * sel_ip;
-		PRINT_TEXT1(x_shift, 11, "vvv");
+        // Print ip digit selector
+        uint8_t x_shift = 17 + 4 * sel_ip;
+        PRINT_TEXT1(x_shift, 11, "vvv");
 
-		// Refresh screen if needed
-		if (update_screen)
+        // Refresh screen if needed
+        if (update_screen)
         {
             OSScreenFlipBuffersEx(1);
             OSScreenClearBufferEx(1, 0);
         }
 
-		// Read vpad
-		VPADRead(0, &vpad_data, 1, &error);
+        // Read vpad
+        VPADRead(0, &vpad_data, 1, &error);
 
-		// Check for buttons
+        // Check for buttons
         // Home Button
         if (vpad_data.btn_trigger & BUTTON_HOME) {
             result = 0;
@@ -374,20 +363,20 @@ static int show_ip_selection_screen(unsigned int coreinit_handle, unsigned int *
             delay = 0;
         }
 
-		// Button pressed ?
-		update_screen = (vpad_data.btn_hold & BTN_PRESSED) ? 1 : 0;
-	}
+        // Button pressed ?
+        update_screen = (vpad_data.btn_hold & BTN_PRESSED) ? 1 : 0;
+    }
 
-	return result;
+    return result;
 }
 
 /* libcurl data write callback */
 static int curl_write_data_callback(void *buffer, int size, int nmemb, void *userp)
 {
     file_struct_t *file = (file_struct_t *)userp;
-	int insize = size*nmemb;
+    int insize = size*nmemb;
 
-	while(file->len + insize > file->alloc_size)  {
+    while(file->len + insize > file->alloc_size)  {
         if(file->data) {
             file->MEMFreeToDefaultHeap(file->data);
         }
@@ -395,11 +384,11 @@ static int curl_write_data_callback(void *buffer, int size, int nmemb, void *use
         file->data = file->MEMAllocFromDefaultHeapEx(file->alloc_size, 0x20);
         if(!file->data)
             OSFatal("Memory allocation failed");
-	}
+    }
 
-	memcpy(file->data + file->len, buffer, insize);
-	file->len += insize;
-	return insize;
+    memcpy(file->data + file->len, buffer, insize);
+    file->len += insize;
+    return insize;
 }
 
 /* The downloader thread */
@@ -416,99 +405,100 @@ static int curl_download_file(private_data_t *private_data, void * curl, char *u
     file.data = 0;
     file.len = 0;
     file.alloc_size = 0;
-	private_data->curl_easy_setopt(curl, CURLOPT_URL, url);
-	private_data->curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_data_callback);
-	private_data->curl_easy_setopt(curl, CURLOPT_WRITEDATA, &file);
+    private_data->curl_easy_setopt(curl, CURLOPT_URL, url);
+    private_data->curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_data_callback);
+    private_data->curl_easy_setopt(curl, CURLOPT_WRITEDATA, &file);
 
-	/* Download file */
-	int ret = private_data->curl_easy_perform(curl);
-	if(ret)
+    /* Download file */
+    int ret = private_data->curl_easy_perform(curl);
+    if(ret)
         OSFatal(url);
 
-	/* Do error checks */
-	if(!file.len) {
+    /* Do error checks */
+    if(!file.len) {
         OSFatal(url);
-	}
+    }
 
-	int resp = 404;
-	private_data->curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &resp);
-	if(resp != 200) {
+    int resp = 404;
+    private_data->curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &resp);
+    if(resp != 200) {
         OSFatal(url);
-	}
+    }
 
-	*out_buffer = file.data;
-	return file.len;
+    *out_buffer = file.data;
+    return file.len;
 }
 
 static void curl_thread_callback(int argc, void *argv)
 {
     private_data_t *private_data = (private_data_t *)argv;
-	char *leaddr = (char*)0;
-	unsigned char *str;
+    char *leaddr = (char*)0;
+    unsigned char *str;
 
-	char buf[128];
-	/* find address left in ram */
-	for(str = (unsigned char*)0x1A000000; str < (unsigned char*)0x20000000; str++)
-	{	/* Search for /payload which indicates the current address */
-		if(*(unsigned int*)str == 0x2F706179 && *(unsigned int*)(str+4) == 0x6C6F6164)
-		{
-			leaddr = (char*)str;
-			while(*leaddr) leaddr--;
-			leaddr++;
-			/* If string starts with http its likely to be correct */
-			if(*(unsigned int*)leaddr == 0x68747470)
-				break;
-			leaddr = (char*)0;
-		}
-	}
-	if(leaddr == (char*)0)
+    char buf[128];
+    /* find address left in ram */
+    for(str = (unsigned char*)0x1A000000; str < (unsigned char*)0x20000000; str++)
+    { /* Search for /payload which indicates the current address */
+        if(*(unsigned int*)str == 0x2F706179 && *(unsigned int*)(str+4) == 0x6C6F6164)
+        {
+            leaddr = (char*)str;
+            while(*leaddr)
+                leaddr--;
+            leaddr++;
+            /* If string starts with http its likely to be correct */
+            if(*(unsigned int*)leaddr == 0x68747470)
+                break;
+            leaddr = (char*)0;
+        }
+    }
+    if(leaddr == (char*)0)
         OSFatal("URL not found");
 
-	/* Acquire and setup libcurl */
-	unsigned int libcurl_handle;
-	OSDynLoad_Acquire("nlibcurl", &libcurl_handle);
+    /* Acquire and setup libcurl */
+    unsigned int libcurl_handle;
+    OSDynLoad_Acquire("nlibcurl", &libcurl_handle);
 
-	OSDynLoad_FindExport(libcurl_handle, 0, "curl_easy_init", &private_data->curl_easy_init);
-	OSDynLoad_FindExport(libcurl_handle, 0, "curl_easy_setopt", &private_data->curl_easy_setopt);
-	OSDynLoad_FindExport(libcurl_handle, 0, "curl_easy_perform", &private_data->curl_easy_perform);
-	OSDynLoad_FindExport(libcurl_handle, 0, "curl_easy_getinfo", &private_data->curl_easy_getinfo);
-	OSDynLoad_FindExport(libcurl_handle, 0, "curl_easy_cleanup", &private_data->curl_easy_cleanup);
+    OSDynLoad_FindExport(libcurl_handle, 0, "curl_easy_init", &private_data->curl_easy_init);
+    OSDynLoad_FindExport(libcurl_handle, 0, "curl_easy_setopt", &private_data->curl_easy_setopt);
+    OSDynLoad_FindExport(libcurl_handle, 0, "curl_easy_perform", &private_data->curl_easy_perform);
+    OSDynLoad_FindExport(libcurl_handle, 0, "curl_easy_getinfo", &private_data->curl_easy_getinfo);
+    OSDynLoad_FindExport(libcurl_handle, 0, "curl_easy_cleanup", &private_data->curl_easy_cleanup);
 
-	void *curl = private_data->curl_easy_init();
-	if(!curl) {
+    void *curl = private_data->curl_easy_init();
+    if(!curl) {
         OSFatal("cURL init failed");
-	}
+    }
 
-	/* Generate the url address */
-	char *src_ptr = leaddr;
-	char *ptr = buf;
-	while(*src_ptr) {
+    /* Generate the url address */
+    char *src_ptr = leaddr;
+    char *ptr = buf;
+    while(*src_ptr) {
         *ptr++ = *src_ptr++;
-	}
-	*ptr = 0;
-	// go back to last /
-	while(*ptr != 0x2F)
+    }
+    *ptr = 0;
+    // go back to last /
+    while(*ptr != 0x2F)
         ptr--;
 
-	memcpy(ptr+1, "fs532.elf", 10);
-	private_data->len_fs  = curl_download_file(private_data, curl, buf, &private_data->data_fs);
-	memcpy(ptr+1, "menu532.elf", 12);
-	private_data->len_menu  = curl_download_file(private_data, curl, buf, &private_data->data_menu);
-	memcpy(ptr+1, "loader532.elf", 14);
-	private_data->len_loader  = curl_download_file(private_data, curl, buf, &private_data->data_loader);
+    memcpy(ptr+1, "fs532.elf", 10);
+    private_data->len_fs  = curl_download_file(private_data, curl, buf, &private_data->data_fs);
+    memcpy(ptr+1, "menu532.elf", 12);
+    private_data->len_menu  = curl_download_file(private_data, curl, buf, &private_data->data_menu);
+    memcpy(ptr+1, "loader532.elf", 14);
+    private_data->len_loader  = curl_download_file(private_data, curl, buf, &private_data->data_loader);
 
-	/* Cleanup to gain back memory */
-	private_data->curl_easy_cleanup(curl);
+    /* Cleanup to gain back memory */
+    private_data->curl_easy_cleanup(curl);
 
-	/* Release libcurl and exit thread */
-	// TODO: get correct address of OSDynLoad_Release and release the handle
-	// finding export is not working
-	//void (*OSDynLoad_Release)(unsigned int handle);
-	//OSDynLoad_FindExport(private_data->coreinit_handle, 0, "OSDynLoad_Release", &OSDynLoad_Release);
-	//OSDynLoad_Release(libcurl_handle);
+    /* Release libcurl and exit thread */
+    // TODO: get correct address of OSDynLoad_Release and release the handle
+    // finding export is not working
+    //void (*OSDynLoad_Release)(unsigned int handle);
+    //OSDynLoad_FindExport(private_data->coreinit_handle, 0, "OSDynLoad_Release", &OSDynLoad_Release);
+    //OSDynLoad_Release(libcurl_handle);
 
     /* Pre-load the Mii Studio to be executed on _Exit - thanks to wj444 for sharing it */
-	SYSLaunchMiiStudio();
+    SYSLaunchMiiStudio();
 }
 
 static int strcmp(const char *s1, const char *s2)
@@ -530,12 +520,12 @@ static int strcmp(const char *s1, const char *s2)
 
 static unsigned int get_section(private_data_t *private_data, unsigned char *data, const char *name, unsigned int * size, unsigned int * addr)
 {
-	Elf32_Ehdr *ehdr = (Elf32_Ehdr *) data;
+    Elf32_Ehdr *ehdr = (Elf32_Ehdr *) data;
 
-	if (   !data
+    if (   !data
         || !IS_ELF (*ehdr)
         || (ehdr->e_type != ET_EXEC)
-		|| (ehdr->e_machine != EM_PPC))
+        || (ehdr->e_machine != EM_PPC))
     {
         OSFatal("Invalid elf");
     }
@@ -632,7 +622,6 @@ static void InstallLoader(private_data_t *private_data)
     DCFlushRange((void*)(0xC1000000 + 0x01009658), 4);
     ICInvalidateRange((void*)(0xC1000000 + 0x01009658), 4);
 
-
     /* Copy loader code in memory */
     /* - virtual address 0xA0000000 is at physical address 0x10000000 (with read/write access) */
     /* - virtual address range 0x01xxxxxx starts at physical address 0x32000000 */
@@ -673,6 +662,20 @@ static void InstallLoader(private_data_t *private_data)
         DCFlushRange((void*)(0xC1000000 + call_addr), 4);
         ICInvalidateRange((void*)(0xC1000000 + call_addr), 4);
     }
+
+    /* patch address of GetBounceNext() to do branch instead of branch link as others */
+//    *((volatile uint32_t *)(0xC1000000 + 0x0100B6B8)) &= 0x03FFFFFC;     // change from bl to b
+//    *((volatile uint32_t *)(0xC1000000 + 0x0100B6B8)) |= 0x48000000;     // change from bl to b
+//    DCFlushRange((void*)(0xC1000000 + 0x0100B6B8), 4);
+//    ICInvalidateRange((void*)(0xC1000000 + 0x0100B6B8), 4);
+//
+//    /* Patch to bypass SDK version tests */
+//    *((volatile uint32_t *)(0xC1000000 + 0x010095b4)) = 0x480000a0; // ble loc_1009654    (0x408100a0) => b loc_1009654      (0x480000a0)
+//    *((volatile uint32_t *)(0xC1000000 + 0x01009658)) = 0x480000e8; // bge loc_1009740    (0x408100a0) => b loc_1009740      (0x480000e8)
+//    DCFlushRange((void*)(0xC1000000 + 0x010095b4), 4);
+//    ICInvalidateRange((void*)(0xC1000000 + 0x010095b4), 4);
+//    DCFlushRange((void*)(0xC1000000 + 0x01009658), 4);
+//    ICInvalidateRange((void*)(0xC1000000 + 0x01009658), 4);
 }
 
 /* ****************************************************************** */
