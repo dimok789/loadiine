@@ -3,13 +3,14 @@ CC=powerpc-eabi-gcc
 CFLAGS=-std=gnu99 -nostdinc -fno-builtin -c
 LD=powerpc-eabi-ld
 LDFLAGS=-Ttext 1800000 --oformat binary
+OBJDUMP ?= $(PREFIX)objdump
 project	:=	.
 root:=$(CURDIR)
 build	:=	 $(root)/bin
 www :=$(root)/../../../www
 framework:=$(root)/../../../framework
 
-all: clean setup menu loader fs main532
+all: clean setup menu loader fs main532 print_stats
 
 setup:
 	mkdir -p $(root)/bin/
@@ -35,3 +36,9 @@ clean:
 	make -C ../loader/ clean
 	make -C ../fs/ clean
 	rm -rf $(build)
+
+print_stats:
+	@echo
+	@echo "code size : menu   =>" `$(OBJDUMP) -h $(build)/menu532.elf | awk '/.text|rodata/ { sum+=strtonum("0x"$$3) } END {print sum}'` / 5120
+	@echo "code size : loader =>" `$(OBJDUMP) -h $(build)/loader532.elf | awk '/.text/ { sum+=strtonum("0x"$$3) } END {print sum}'` / 4096
+	@echo "code size : fs     =>" `$(OBJDUMP) -h $(build)/fs532.elf | awk '/.text|rodata|magic/ { sum+=strtonum("0x"$$3) } END {print sum}'` / 17392

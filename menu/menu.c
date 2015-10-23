@@ -294,6 +294,8 @@ static int IsRPX(FSDirEntry *dir_entry)
 /* Copy_RPX_RPL */
 static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_entry, char *path, int path_index, int is_rpx, int entry_index, int *cur_mem_address)
 {
+    // Open rpl file
+    int fd = 0;
     char buf_mode[3] = {'r', '\0' };
     char* path_game = (char*)malloc(FS_MAX_MOUNTPATH_SIZE);
     if (!path_game)
@@ -313,8 +315,27 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
     path_index += len;
     path_game[path_index++] = '\0';
 
-    // Open rpl file
-    int fd = 0;
+    if(!is_rpx)
+    {
+        // fill rpx/rpl entry
+        s_rpx_rpl rpx_rpl_data;
+		if(len > sizeof(rpx_rpl_data.name)-1) {
+			len = sizeof(rpx_rpl_data.name)-1;
+		}
+
+        memset(&rpx_rpl_data, 0, sizeof(s_rpx_rpl));
+        rpx_rpl_data.address = (int)MEM_BASE;
+        rpx_rpl_data.size = 0;
+        memcpy(rpx_rpl_data.name, dir_entry->name, len);
+
+        // copy rpx/rpl entry
+        memcpy(RPX_RPL_ARRAY + entry_index * sizeof(s_rpx_rpl), &rpx_rpl_data, sizeof(s_rpx_rpl));
+
+        // free path
+        free(path_game);
+        return 1;
+    }
+
     if (FSOpenFile(pClient, pCmd, path_game, buf_mode, &fd, FS_RET_ALL_ERROR) == FS_STATUS_OK)
     {
         int cur_size = 0;
@@ -339,7 +360,7 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
 		}
 
         memset(&rpx_rpl_data, 0, sizeof(s_rpx_rpl));
-        rpx_rpl_data.address = *cur_mem_address;
+        rpx_rpl_data.address = (int)MEM_BASE;
         rpx_rpl_data.size = cur_size;
         memcpy(rpx_rpl_data.name, dir_entry->name, len);
 

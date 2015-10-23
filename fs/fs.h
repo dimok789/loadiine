@@ -7,6 +7,8 @@
 void *memcpy(void *dst, const void *src, int bytes);
 void *memset(void *dst, int val, int bytes);
 extern void *(* const MEMAllocFromDefaultHeapEx)(int size, int align);
+extern void *(* const MEMAllocFromDefaultHeap)(int size);
+extern void (* const MEMFreeToDefaultHeap)(void *p);
 #define memalign (*MEMAllocFromDefaultHeapEx)
 
 /* socket.h */
@@ -36,15 +38,20 @@ struct sockaddr_in {
 
 /* OS stuff */
 extern const long long title_id;
+extern void DCFlushRange(const void *p, unsigned int s);
 
 /* SDCard functions */
 extern FSStatus FSGetMountSource(void *pClient, void *pCmd, FSSourceType type, FSMountSource *source, FSRetFlag errHandling);
 extern FSStatus FSMount(void *pClient, void *pCmd, FSMountSource *source, char *target, uint bytes, FSRetFlag errHandling);
+extern FSStatus FSReadFile(FSClient *pClient, FSCmdBlock *pCmd, void *buffer, int size, int count, int fd, FSFlag flag, FSRetFlag errHandling);
+extern void FSInitCmdBlock(FSCmdBlock *pCmd);
+extern FSStatus FSCloseFile(FSClient *pClient, FSCmdBlock *pCmd, int fd, int error);
 
 /* Forward declarations */
 #define MAX_CLIENT 32
 
 struct bss_t {
+    int global_sock;
     int socket_fs[MAX_CLIENT];
     void *pClient_fs[MAX_CLIENT];
     volatile int lock;

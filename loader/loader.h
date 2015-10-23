@@ -13,4 +13,9 @@ extern void addr_GetNextBounce_1(void);
 extern void addr_GetNextBounce_2(void);
 extern void addr_LiRefillBounceBufferForReading_af_getbounce(void);
 
+extern int addr_GetNextBounce(int *r3);
+extern void LiInitBuffer(void);
+extern int LiWaitOneChunk(int * r3, int r4, int r5);
+extern int LiRefillUpcomingBounceBuffer(void * r3, int r4);
+
 #endif /* _LOADER_H_ */

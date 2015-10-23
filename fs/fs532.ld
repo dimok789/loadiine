@@ -61,6 +61,8 @@ PROVIDE(FSReadFileAsync = 0x0106a808);
 PROVIDE(FSCloseDir = 0x0106f700);
 PROVIDE(FSGetCwd = 0x0106f870);
 PROVIDE(FSReadDir = 0x0106f780);
+PROVIDE(FSInitCmdBlock = 0x01068c54);
+PROVIDE(FSReadFile = 0x106f108);
 
 /* FS methods for sd card */
 PROVIDE(FSGetMountSource = 0x0106ec24);
@@ -78,15 +80,20 @@ PROVIDE(send = 0x10c16ac);
 PROVIDE(recv = 0x10c0aec);
 
 /* OS methods */
+PROVIDE(OSDynLoad_Acquire = 0x0102A31C);
+PROVIDE(OSDynLoad_IsModuleLoaded = 0x0102A504);
+PROVIDE(OSDynLoad_GetModuleName = 0x0102B960);
 PROVIDE(__os_snprintf = 0x102f09c);
 PROVIDE(OSFatal = 0x1031368);
 PROVIDE(OSSetExceptionCallbackEx = 0x010443f8);
+PROVIDE(DCFlushRange = 0x1023ee8);
 
 /* Standard library methods */
 PROVIDE(memcpy = 0x1035a68);
 PROVIDE(memset = 0x1035a54);
 PROVIDE(MEMAllocFromDefaultHeapEx = 0x1004e9c0);
-PROVIDE(MEMAllocFromExpHeapEx = 0x010497b0);
+PROVIDE(MEMAllocFromDefaultHeap = 0x100b4878);
+PROVIDE(MEMFreeToDefaultHeap = 0x100b487c);
 
 /* OS data */
 PROVIDE(title_id = 0x100136D0);

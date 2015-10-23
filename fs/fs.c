@@ -34,7 +34,7 @@ static int client_num(void *pClient) {
     return -1;
 }
 
-static int strlen(char* path) {
+static int strlen(const char* path) {
     int i = 0;
     while (path[i++])
         ;
@@ -206,6 +206,8 @@ DECL(int, FSInit, void) {
         __os_snprintf(bss.mount_base, sizeof(bss.mount_base), "%s%s/%s%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, (char *)GAME_DIR_NAME, CONTENT_PATH);
         // create game save path prefix
         __os_snprintf(bss.save_base, sizeof(bss.save_base), "%s%s/%s", CAFE_OS_SD_PATH, SD_SAVES_PATH, (char *)GAME_DIR_NAME);
+
+        fs_connect(&bss.global_sock);
 
         // in case there is no game selected
 //        if (bss.mount_base[16] == 0) { bss.mount_base[16] = '0'; bss.save_base[21] = '0'; }
@@ -570,6 +572,186 @@ DECL(int, FSRemoveAsync, void *pClient, void *pCmd, char *path, int error, FSAsy
     return real_FSRemoveAsync(pClient, pCmd, path, error, asyncParams);
 }
 
+static inline int toupper(int c) {
+    return (c >= 'a' && c <= 'z') ? (c - 0x20) : c;
+}
+
+static int CheckAndLoadRPL(const char *rpl) {
+    // If we are in Smash Bros app
+    if (*(volatile unsigned int *)RPX_NAME_PENDING == 0)
+        return 0;
+
+    if ((int)bss_ptr != 0x0a000000)
+    {
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s)", rpl);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+    }
+
+    for (int k = 1; k < (*(volatile unsigned int *)(RPX_RPL_ENTRY_COUNT)); k++)
+    {
+        s_rpx_rpl *rpl_struct = (s_rpx_rpl*)(RPX_RPL_ARRAY + k * sizeof(s_rpx_rpl));
+
+        int len = strlen(rpl);
+        int len2 = strlen(rpl_struct->name);
+        if ((len != len2) && (len != (len2 - 4))) {
+            if ((int)bss_ptr != 0x0a000000)
+            {
+                char buffer[200];
+                __os_snprintf(buffer, sizeof(buffer), "compare %s to %s  length not matching: %i != %i", rpl, rpl_struct->name, len, len2);
+                log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+            }
+            continue;
+        }
+
+        int found = 1;
+        for (int x = 0; x < len; x++)
+        {
+            if (toupper(rpl_struct->name[x]) != toupper(rpl[x]))
+            {
+                found = 0;
+                break;
+            }
+        }
+
+        if ((int)bss_ptr != 0x0a000000)
+        {
+            char buffer[200];
+            __os_snprintf(buffer, sizeof(buffer), "compare %s to %s  matching: %i", rpl, rpl_struct->name, found);
+            log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+        }
+
+        if (found)
+        {
+            if ((int)bss_ptr != 0x0a000000)
+            {
+                char buffer[200];
+                __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) found and loading", rpl);
+                log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+            }
+            FSInit();
+            FSClient *pClient = (FSClient*) MEMAllocFromDefaultHeap(sizeof(FSClient));
+            if (!pClient)
+                return 0;
+
+            FSCmdBlock *pCmd = (FSCmdBlock*) MEMAllocFromDefaultHeap(sizeof(FSCmdBlock));
+            if (!pCmd)
+            {
+                MEMFreeToDefaultHeap(pClient);
+                return 0;
+            }
+
+            FSInitCmdBlock(pCmd);
+            FSAddClientEx(pClient, 0, FS_RET_NO_ERROR);
+
+            int path_len = strlen(CAFE_OS_SD_PATH) + strlen(SD_GAMES_PATH) + strlen((char *)GAME_DIR_NAME) + strlen(RPX_RPL_PATH) + strlen(rpl_struct->name) + 3;
+            char *path_rpl = MEMAllocFromDefaultHeap(path_len);
+            __os_snprintf(path_rpl, path_len, "%s%s/%s%s/%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, (char *)GAME_DIR_NAME, RPX_RPL_PATH, rpl_struct->name);
+
+            int fd = 0;
+            int result = real_FSOpenFile(pClient, pCmd, path_rpl, "r", &fd, FS_RET_ALL_ERROR);
+
+            if ((int)bss_ptr != 0x0a000000)
+            {
+                char buffer[200];
+                __os_snprintf(buffer, sizeof(buffer), "FSOpenFile(%s) result %i", path_rpl, result);
+                log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+            }
+
+            if (result == FS_STATUS_OK)
+            {
+                // malloc mem for read file
+                unsigned char* dataBuf = (unsigned char*)MEMAllocFromDefaultHeap(0x1000);
+                int ret;
+                // Copy rpl in memory : 22 MB max
+                while ((ret = FSReadFile(pClient, pCmd, dataBuf, 0x1, 0x1000, fd, 0, FS_RET_ALL_ERROR)) > 0)
+                {
+                    if ((int)bss_ptr != 0x0a000000)
+                    {
+                        char buffer[200];
+                        __os_snprintf(buffer, sizeof(buffer), "FSReadFile(%s) %i", rpl, ret);
+                        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+                    }
+                    // Copy in memory and save offset
+                    for (int j = 0; j < ret; j++)
+                        *(volatile unsigned char*)(((unsigned int)MEM_BASE) + rpl_struct->size + j) = dataBuf[j];
+                    rpl_struct->size += ret;
+                }
+                // reset offset
+                rpl_struct->offset = 0;
+                rpl_struct->address = (int)MEM_BASE;
+                //DCFlushRange((char*)rpl_struct->address, rpl_struct->size);
+                //DCFlushRange((char*)rpl_struct, sizeof(s_rpx_rpl));
+
+                if ((int)bss_ptr != 0x0a000000)
+                {
+                    char buffer[200];
+                    __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) file loaded 0x%08X %i", rpl, rpl_struct->address, rpl_struct->size);
+                    log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+                }
+
+                FSCloseFile(pClient, pCmd, fd, FS_RET_NO_ERROR);
+                MEMFreeToDefaultHeap(dataBuf);
+            }
+
+            FSDelClient(pClient);
+            MEMFreeToDefaultHeap(pCmd);
+            MEMFreeToDefaultHeap(pClient);
+            MEMFreeToDefaultHeap(path_rpl);
+
+            if ((int)bss_ptr != 0x0a000000)
+            {
+                char buffer[200];
+                __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) done", rpl);
+                log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+            }
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+DECL(int, OSDynLoad_Acquire, char* rpl, unsigned int *handle, int r5 __attribute__((unused))) {
+    CheckAndLoadRPL(rpl);
+
+    int result = real_OSDynLoad_Acquire(rpl, handle, 0);
+    if ((int)bss_ptr != 0x0a000000)
+    {
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "OSDynLoad_Acquire: %s result: %i", rpl, result);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+    }
+
+    return result;
+}
+
+DECL(int, OSDynLoad_GetModuleName, unsigned int *handle, char *name_buffer, int *name_buffer_size) {
+
+    int result = real_OSDynLoad_GetModuleName(handle, name_buffer, name_buffer_size);
+    if ((int)bss_ptr != 0x0a000000)
+    {
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "OSDynLoad_GetModuleName: %s result %i", (name_buffer && result == 0) ? name_buffer : "NULL", result);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+    }
+
+    return result;
+}
+
+DECL(int, OSDynLoad_IsModuleLoaded, char* rpl, unsigned int *handle, int r5 __attribute__((unused))) {
+
+    int result = real_OSDynLoad_IsModuleLoaded(rpl, handle, 1);
+    if ((int)bss_ptr != 0x0a000000)
+    {
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "OSDynLoad_IsModuleLoaded: %s result %i", rpl, result);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+    }
+
+    return result;
+}
+
 /* *****************************************************************************
  * Creates function pointer array
  * ****************************************************************************/
@@ -599,4 +781,8 @@ struct magic_t {
     MAKE_MAGIC(FSRenameAsync),
     MAKE_MAGIC(FSRemove),
     MAKE_MAGIC(FSRemoveAsync),
+
+    MAKE_MAGIC(OSDynLoad_Acquire),
+    MAKE_MAGIC(OSDynLoad_GetModuleName),
+    MAKE_MAGIC(OSDynLoad_IsModuleLoaded),
 };

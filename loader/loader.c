@@ -3,20 +3,23 @@
 
 // dbcf and icbi flush/invalidate 0x20 bytes but we can't be sure that our 4 bytes are all in the same block, so call it for first and last byte
 #define FlushBlock(addr)   asm volatile("dcbf %0, %1\n"                                \
-                                        "dcbf %0, %2\n"                                \
                                         "icbi %0, %1\n"                                \
-                                        "icbi %0, %2\n"                                \
                                         "sync\n"                                       \
                                         "eieio\n"                                      \
                                         "isync\n"                                      \
                                         :                                              \
-                                        :"r"(0), "r"((addr)), "r"(((addr) + 3))        \
+                                        :"r"(0), "r"(((addr) & ~31))                   \
                                         :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"     \
                                         );
 
 // Instruction address after LiWaitOneChunk
 #define LI_WAIT_ONE_CHUNK_AFTER_ADDR    (0x01009120)
 #define LI_WAIT_ONE_CHUNK2_AFTER_ADDR   (0x0100b6ec)
+
+
+static inline int toupper(int c) {
+    return (c >= 'a' && c <= 'z') ? (c - 0x20) : c;
+}
 
 /* LOADER_Start ****************************************************************
  * - instruction address = 0x01003e60
@@ -117,13 +120,13 @@ void LOADER_Prep(void)
             while(rpl_struct->name[len2])
                 len2++;
 
-            if (len != (len2 - 4))
+            if ((len != len2) && (len != (len2 - 4)))
                 continue;
 
             int found = 1;
             for (int x = 0; x < len; x++)
             {
-                if (rpl_struct->name[x] != rpl_name[x])
+                if (toupper(rpl_struct->name[x]) != toupper(rpl_name[x]))
                 {
                     found = 0;
                     break;
@@ -218,8 +221,8 @@ void LiLoadRPLBasics_in_1_load(void)
                 size = 0x400000;
 
                 // Patch the loader instruction after LiWaitOneChunk (in GetNextBounce)
-                *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER_ADDR)) = 0x60000000; // nop
-                FlushBlock((0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER_ADDR));
+                //*((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER_ADDR)) = 0x60000000; // nop
+                //FlushBlock((0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER_ADDR));
             }
 
             for (int i = 0; i < (size / 4); i++)
@@ -292,8 +295,8 @@ void LiSetupOneRPL_after(void)
         *(volatile unsigned int *)(IS_ACTIVE_ADDR) = 0; // Set as inactive
 
         // Restore original instruction after LiWaitOneChunk (in GetNextBounce)
-        *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER_ADDR)) = 0x408200c0; // bne loc_100B7AC
-        FlushBlock((0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER_ADDR));
+        //*((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER_ADDR)) = 0x408200c0; // bne loc_100B7AC
+        //FlushBlock((0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER_ADDR));
     }
 
     // Return properly
@@ -304,120 +307,95 @@ void LiSetupOneRPL_after(void)
     return;
 }
 
-/* GetNextBounce_1 **************************************************************
- * - instruction address = 0x0100b728
- * - original instruction = 0x7c0a2040 : "cmplw r10, r4" (instruction is originaly "cmplw r10, r11" but it was patched because of the gcc proploge overwriting r11)
- */
-void GetNextBounce_1(void)
-{
-    // Save registers
-    int r10; // size read, max 0x400000, or less if it is end of stream
-    int r12; // read offset start : starts at 0x400000 + x * 0x800000
-    int r5;  // read offset end   : read offset start + size read
-    int r6, r9, r30;
-    asm volatile("mr %0, 10\n"
-        "mr %1, 12\n"
-        "mr %2, 5\n" // r5 is originaly r9 but we patched it
-        "mr %3, 30\n"
-        "mr %4, 6\n"         // read out r6 which is than transformed to r9 by substract of r10
-        :"=r"(r10), "=r"(r12), "=r"(r5), "=r"(r30), "=r"(r9)
-        :
-        :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
-    );
 
-    // substract r10 to get the value of r9 as what we loaded is actually r6
-    r9 = r9 - r10;
+int GetNextBounce(unsigned char *buffer)
+{
+//    loader_debug_t * loader = (loader_debug_t *)DATA_ADDR;
+//    while(loader->tag != 0)
+//        loader++;
+
+    int r4 = *(unsigned int *)(&buffer[0x14]);
+    int r5  = *(unsigned int *)(&buffer[0x8C]);
+    int size = 0;
+
+    int result = LiWaitOneChunk(&size, r4, r5);
 
     // If it is active
     int is_active = *(volatile unsigned int *)(IS_ACTIVE_ADDR);
     if (is_active)
     {
         // Check if we need to adjust the read size and offset
-        int size = *(volatile unsigned int *)(MEM_SIZE);
-        if (size > 0x400000)
-            size = 0x400000;
-
-        r10 = size;         // set the new read size
-        r5 = r12 + r10;     // set the offset end
+        int s = *(volatile unsigned int *)(MEM_SIZE);
+        if (s >= 0x400000) {
+            s = 0x400000;
+            result = 0;
+        }
+        size = s;         // set the new read size
+        //r5 = r12 + r10;     // set the offset end
 
         *(volatile unsigned int *)(BOUNCE_FLAG_ADDR) = 1; // Bounce flag on
     }
 
-    // store correct size
-    r6 = r9 + r10;
+//    loader[0].tag = 6;
+//    loader[0].data = result;
+//    loader[1].tag = 7;
+//    loader[1].data = size;
+//    loader[2].tag = 0;
+//    loader[2].data = 0;
 
-    // return properly
-    asm volatile("mr 12, %0\n"
-        "mr 5, %1\n"
-        "mr 10, %2\n"
-        "mr 6, %3\n"
-        "mr 30, %4\n"
-        "stw 6, 0x80(30)\n"
-        "cmplw 10, 4\n"
-        :
-        :"r"(r12), "r"(r5), "r"(r10), "r"(r6), "r"(r30)
-        :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
-    );
-}
-
-/* GetNextBounce_2 **************************************************************
- * - instruction address = 0x0100b780
- * - original instruction = 0x7c0a2040 : "cmplw r10, r4" (instruction is originaly "cmplw r10, r11" but it's been patched because of the gcc proploge overwriting r11)
- */
-void GetNextBounce_2(void)
-{
-    // Save registers
-    int r10; // size read, max 0x400000, or less if it is end of stream
-    int r12; // read offset start : starts at 0x800000 + x * 0x800000
-    int r5;  // read offset end   : read offset start + size read
-    int r0, r30;
-    asm volatile("mr %0, 10\n"
-        "mr %1, 12\n"
-        "mr %2, 30\n"
-        "mr %3, 5\n" // r5 is originaly r9 but it's been patched
-        :"=r"(r10), "=r"(r12), "=r"(r30), "=r"(r5)
-        :
-        :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
-    );
-
-    // If we are in smash bros app
-    int is_active = *(volatile unsigned int *)(IS_ACTIVE_ADDR);
-    if (is_active)
+    if(result)
     {
-        // Check if we need to adjust the read size and offset
-        int size = *(volatile unsigned int *)(MEM_SIZE);
-        if (size > 0x400000)
-            size = 0x400000;
-
-        r10 = size;         // set the new read size
-        r5 = r12 + r10;     // set the offset end
-
-        *(volatile unsigned int *)(BOUNCE_FLAG_ADDR) = 1; // Bounce flag on
+        return result;
     }
 
-    r0 = r12 + r10;
+    if(*(unsigned int *)(&buffer[0x78]) == 1)
+    {
+        *(unsigned int *)(&buffer[0x78]) = 2;
+        *(unsigned int *)(&buffer[0x80]) += size;
+        *(unsigned int *)(&buffer[0x7c]) = *(unsigned int *)(&buffer[0x94]);
+        *(unsigned int *)(&buffer[0x84]) = *(unsigned int *)(&buffer[0x88]);
+        *(unsigned int *)(&buffer[0x90]) += size;
+        *(unsigned int *)(&buffer[0x88]) += size;
 
-    // return properly
-    asm volatile("mr 12, %0\n"
-        "mr 5, %1\n"
-        "mr 10, %2\n"
-        "mr 0, %3\n"
-        "mr 30, %4\n"
-        "stw 0, 0x88(30)\n"
-        "cmplw 10, 4\n"
-        :
-        :"r"(r12), "r"(r5), "r"(r10), "r"(r0), "r"(r30)
-        :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
-    );
+        if(size != 0x400000)
+        {
+           LiInitBuffer();
+        }
+        else
+        {
+            result = LiRefillUpcomingBounceBuffer(buffer, 1);
+        }
+    }
+    else
+    {
+        *(unsigned int *)(&buffer[0x78]) = 1;
+        *(unsigned int *)(&buffer[0x84]) = *(unsigned int *)(&buffer[0x88]);
+        *(unsigned int *)(&buffer[0x88]) += size;
+        *(unsigned int *)(&buffer[0x7c]) =  *(unsigned int *)(&buffer[0x94]);
+        *(unsigned int *)(&buffer[0xB0]) -= *(unsigned int *)(&buffer[0x80]);
+        *(unsigned int *)(&buffer[0x80]) = size;
+        *(unsigned int *)(&buffer[0x90]) += size;
+
+        if(size != 0x400000)
+        {
+           LiInitBuffer();
+        }
+        else {
+            result = LiRefillUpcomingBounceBuffer(buffer, 2);
+        }
+    }
+
+    return result;
 }
-
 /* LiRefillBounceBufferForReading_af_getbounce *********************************
  * - instruction address = 0x0100BA28
  * - original instruction = 0x2C030000 : "cmpwi r3, 0"
  */
 void LiRefillBounceBufferForReading_af_getbounce(void)
 {
+    //-----------------------------------------------------------------------------------------------------------
     // If it is active
+    //-----------------------------------------------------------------------------------------------------------
     int is_active = *(volatile unsigned int *)(IS_ACTIVE_ADDR);
     if (is_active)
     {
@@ -483,7 +461,9 @@ struct magic_t {
     MAKE_MAGIC(LOADER_Prep,                                 0x3f00fff9),
     MAKE_MAGIC(LiLoadRPLBasics_in_1_load,                   0x7EE3BB78),
     MAKE_MAGIC(LiSetupOneRPL_after,                         0x7FC3F378),
-    MAKE_MAGIC(GetNextBounce_1,                             0x7c0a2040),
-    MAKE_MAGIC(GetNextBounce_2,                             0x7c0a2040),
+    MAKE_MAGIC(GetNextBounce,                               0x7C0802A6),
+//    MAKE_MAGIC(sLiRefillBounceBufferForReading,             0x7C0802A6),
+//    MAKE_MAGIC(GetNextBounce_1,                             0x7c0a2040),
+//    MAKE_MAGIC(GetNextBounce_2,                             0x7c0a2040),
     MAKE_MAGIC(LiRefillBounceBufferForReading_af_getbounce, 0x2C030000),
 };
