@@ -310,10 +310,6 @@ void LiSetupOneRPL_after(void)
 
 int GetNextBounce(unsigned char *buffer)
 {
-//    loader_debug_t * loader = (loader_debug_t *)DATA_ADDR;
-//    while(loader->tag != 0)
-//        loader++;
-
     int r4 = *(unsigned int *)(&buffer[0x14]);
     int r5  = *(unsigned int *)(&buffer[0x8C]);
     int size = 0;
@@ -335,13 +331,6 @@ int GetNextBounce(unsigned char *buffer)
 
         *(volatile unsigned int *)(BOUNCE_FLAG_ADDR) = 1; // Bounce flag on
     }
-
-//    loader[0].tag = 6;
-//    loader[0].data = result;
-//    loader[1].tag = 7;
-//    loader[1].data = size;
-//    loader[2].tag = 0;
-//    loader[2].data = 0;
 
     if(result)
     {

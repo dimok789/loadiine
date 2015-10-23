@@ -40,8 +40,8 @@ static inline int toupper(int c) {
 
 static int strlen(const char* path) {
     int i = 0;
-    while (path[i++])
-        ;
+    while (path[i])
+        i++;
     return i;
 }
 
