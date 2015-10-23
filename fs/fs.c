@@ -34,6 +34,10 @@ static int client_num(void *pClient) {
     return -1;
 }
 
+static inline int toupper(int c) {
+    return (c >= 'a' && c <= 'z') ? (c - 0x20) : c;
+}
+
 static int strlen(const char* path) {
     int i = 0;
     while (path[i++])
@@ -572,21 +576,10 @@ DECL(int, FSRemoveAsync, void *pClient, void *pCmd, char *path, int error, FSAsy
     return real_FSRemoveAsync(pClient, pCmd, path, error, asyncParams);
 }
 
-static inline int toupper(int c) {
-    return (c >= 'a' && c <= 'z') ? (c - 0x20) : c;
-}
-
 static int CheckAndLoadRPL(const char *rpl) {
     // If we are in Smash Bros app
     if (*(volatile unsigned int *)RPX_NAME_PENDING == 0)
         return 0;
-
-    if ((int)bss_ptr != 0x0a000000)
-    {
-        char buffer[200];
-        __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s)", rpl);
-        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
-    }
 
     for (int k = 1; k < (*(volatile unsigned int *)(RPX_RPL_ENTRY_COUNT)); k++)
     {
@@ -595,12 +588,6 @@ static int CheckAndLoadRPL(const char *rpl) {
         int len = strlen(rpl);
         int len2 = strlen(rpl_struct->name);
         if ((len != len2) && (len != (len2 - 4))) {
-            if ((int)bss_ptr != 0x0a000000)
-            {
-                char buffer[200];
-                __os_snprintf(buffer, sizeof(buffer), "compare %s to %s  length not matching: %i != %i", rpl, rpl_struct->name, len, len2);
-                log_string(bss.global_sock, buffer, BYTE_LOG_STR);
-            }
             continue;
         }
 
@@ -614,13 +601,6 @@ static int CheckAndLoadRPL(const char *rpl) {
             }
         }
 
-        if ((int)bss_ptr != 0x0a000000)
-        {
-            char buffer[200];
-            __os_snprintf(buffer, sizeof(buffer), "compare %s to %s  matching: %i", rpl, rpl_struct->name, found);
-            log_string(bss.global_sock, buffer, BYTE_LOG_STR);
-        }
-
         if (found)
         {
             if ((int)bss_ptr != 0x0a000000)
@@ -629,6 +609,8 @@ static int CheckAndLoadRPL(const char *rpl) {
                 __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) found and loading", rpl);
                 log_string(bss.global_sock, buffer, BYTE_LOG_STR);
             }
+
+            // initialize FS
             FSInit();
             FSClient *pClient = (FSClient*) MEMAllocFromDefaultHeap(sizeof(FSClient));
             if (!pClient)
@@ -641,24 +623,23 @@ static int CheckAndLoadRPL(const char *rpl) {
                 return 0;
             }
 
+            // calculate path length for SD access of RPL
+            int path_len = strlen(CAFE_OS_SD_PATH) + strlen(SD_GAMES_PATH) + strlen((char *)GAME_DIR_NAME) + strlen(RPX_RPL_PATH) + strlen(rpl_struct->name) + 3;
+            char *path_rpl = MEMAllocFromDefaultHeap(path_len);
+            if(!path_rpl) {
+                MEMFreeToDefaultHeap(pCmd);
+                MEMFreeToDefaultHeap(pClient);
+                return 0;
+            }
+            // create path
+            __os_snprintf(path_rpl, path_len, "%s%s/%s%s/%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, (char *)GAME_DIR_NAME, RPX_RPL_PATH, rpl_struct->name);
+
+            // do more initial FS stuff
             FSInitCmdBlock(pCmd);
             FSAddClientEx(pClient, 0, FS_RET_NO_ERROR);
 
-            int path_len = strlen(CAFE_OS_SD_PATH) + strlen(SD_GAMES_PATH) + strlen((char *)GAME_DIR_NAME) + strlen(RPX_RPL_PATH) + strlen(rpl_struct->name) + 3;
-            char *path_rpl = MEMAllocFromDefaultHeap(path_len);
-            __os_snprintf(path_rpl, path_len, "%s%s/%s%s/%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, (char *)GAME_DIR_NAME, RPX_RPL_PATH, rpl_struct->name);
-
             int fd = 0;
-            int result = real_FSOpenFile(pClient, pCmd, path_rpl, "r", &fd, FS_RET_ALL_ERROR);
-
-            if ((int)bss_ptr != 0x0a000000)
-            {
-                char buffer[200];
-                __os_snprintf(buffer, sizeof(buffer), "FSOpenFile(%s) result %i", path_rpl, result);
-                log_string(bss.global_sock, buffer, BYTE_LOG_STR);
-            }
-
-            if (result == FS_STATUS_OK)
+            if (real_FSOpenFile(pClient, pCmd, path_rpl, "r", &fd, FS_RET_ALL_ERROR) == FS_STATUS_OK)
             {
                 // malloc mem for read file
                 unsigned char* dataBuf = (unsigned char*)MEMAllocFromDefaultHeap(0x1000);
@@ -666,12 +647,6 @@ static int CheckAndLoadRPL(const char *rpl) {
                 // Copy rpl in memory : 22 MB max
                 while ((ret = FSReadFile(pClient, pCmd, dataBuf, 0x1, 0x1000, fd, 0, FS_RET_ALL_ERROR)) > 0)
                 {
-                    if ((int)bss_ptr != 0x0a000000)
-                    {
-                        char buffer[200];
-                        __os_snprintf(buffer, sizeof(buffer), "FSReadFile(%s) %i", rpl, ret);
-                        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
-                    }
                     // Copy in memory and save offset
                     for (int j = 0; j < ret; j++)
                         *(volatile unsigned char*)(((unsigned int)MEM_BASE) + rpl_struct->size + j) = dataBuf[j];
@@ -680,8 +655,10 @@ static int CheckAndLoadRPL(const char *rpl) {
                 // reset offset
                 rpl_struct->offset = 0;
                 rpl_struct->address = (int)MEM_BASE;
-                //DCFlushRange((char*)rpl_struct->address, rpl_struct->size);
-                //DCFlushRange((char*)rpl_struct, sizeof(s_rpx_rpl));
+
+                // flush memory
+                // DCFlushRange((void*)rpl_struct, sizeof(s_rpx_rpl));
+                // DCFlushRange((void*)rpl_struct->address, rpl_struct->size);
 
                 if ((int)bss_ptr != 0x0a000000)
                 {
@@ -698,13 +675,6 @@ static int CheckAndLoadRPL(const char *rpl) {
             MEMFreeToDefaultHeap(pCmd);
             MEMFreeToDefaultHeap(pClient);
             MEMFreeToDefaultHeap(path_rpl);
-
-            if ((int)bss_ptr != 0x0a000000)
-            {
-                char buffer[200];
-                __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) done", rpl);
-                log_string(bss.global_sock, buffer, BYTE_LOG_STR);
-            }
             return 1;
         }
     }
