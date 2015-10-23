@@ -684,7 +684,7 @@ static int CheckAndLoadRPL(const char *rpl) {
             if (real_FSOpenFile(pClient, pCmd, path_rpl, "r", &fd, FS_RET_ALL_ERROR) == FS_STATUS_OK)
             {
                 // malloc mem for read file
-                unsigned char* dataBuf = (unsigned char*)MEMAllocFromDefaultHeap(0x1000);
+                unsigned char* dataBuf = (unsigned char*)MEMAllocFromDefaultHeapEx(0x1000, 0x40);
                 int ret;
                 // Copy rpl in memory : 22 MB max
                 while ((ret = FSReadFile(pClient, pCmd, dataBuf, 0x1, 0x1000, fd, 0, FS_RET_ALL_ERROR)) > 0)
