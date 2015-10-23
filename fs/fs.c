@@ -2,11 +2,50 @@
 #include "exception_handler.h"
 #include "../common/common.h"
 
-#define DECL(res, name, ...) \
-	extern res name(__VA_ARGS__); \
-	res (* real_ ## name)(__VA_ARGS__)  __attribute__((section(".magicptr"))); \
-	res my_ ## name(__VA_ARGS__)
+#define USE_EXTRA_LOG_FUNCTIONS   1
 
+#define DECL(res, name, ...) \
+        extern res name(__VA_ARGS__); \
+        res (* real_ ## name)(__VA_ARGS__)  __attribute__((section(".magicptr"))); \
+        res my_ ## name(__VA_ARGS__)
+
+/* Log functions */
+//static const struct {
+//    const int tag;
+//    const char *name;
+//} tag_names[] = {
+//    { 1, "LOADER_Start" },
+//    { 2, "LOADER_Entry" },
+//    { 3, "LOADER_Prep" },
+//    { 4, "LiLoadRPLBasics_in_1_load" },
+//    { 5, "GetNextBounce_1" },
+//    { 6, "GetNextBounce_2" },
+//    { 7, "After_GetBounce" },
+//    { 8, "GetNextBounce result end" },
+//};
+//
+//static const char *get_name_for_tag(int tag) {
+//    int i = 0;
+//    for(i = 0; i < sizeof(tag_names) / sizeof(tag_names[0]); i++)
+//        if(tag == tag_names[i].tag)
+//            return tag_names[i].name;
+//
+//    return "unknown";
+//}
+
+/* Common useful functions */
+static inline int toupper(int c) {
+    return (c >= 'a' && c <= 'z') ? (c - 0x20) : c;
+}
+
+static int strlen(const char* path) {
+    int i = 0;
+    while (path[i])
+        i++;
+    return i;
+}
+
+/* Client functions */
 static int client_num_alloc(void *pClient) {
     int i;
 
@@ -34,35 +73,24 @@ static int client_num(void *pClient) {
     return -1;
 }
 
-static inline int toupper(int c) {
-    return (c >= 'a' && c <= 'z') ? (c - 0x20) : c;
-}
-
-static int strlen(const char* path) {
-    int i = 0;
-    while (path[i])
-        i++;
-    return i;
-}
-
 static int is_gamefile(char *path) {
     // In case the path starts by "//" and not "/" (some games do that ... ...)
     if (path[0] == '/' && path[1] == '/')
         path = &path[1];
 
     // In case the path does not start with "/" (some games do that too ...)
-	int len = 0;
-	char new_path[16];
-	if(path[0] != '/') {
-		new_path[0] = '/';
-		len++;
-	}
+    int len = 0;
+    char new_path[16];
+    if(path[0] != '/') {
+        new_path[0] = '/';
+        len++;
+    }
 
-	while(*path && len < sizeof(new_path)) {
-		new_path[len++] = *path++;
-	}
+    while(*path && len < sizeof(new_path)) {
+        new_path[len++] = *path++;
+    }
 
-    /* Note : it's ugly but there is no memory left in payload code, had to comment some */
+    /* Note : no need to check everything, it is faster this way */
     if (new_path[0]  != '/') return 0;
     if (new_path[1]  != 'v' && new_path[1] != 'V') return 0;
 //    if (new_path[2]  != 'o') return 0;
@@ -85,17 +113,18 @@ static int is_savefile(char *path) {
         path = &path[1];
 
     // In case the path does not start with "/" (some games do that too ...)
-	int len = 0;
-	char new_path[16];
-	if(path[0] != '/') {
-		new_path[0] = '/';
-		len++;
-	}
+    int len = 0;
+    char new_path[16];
+    if(path[0] != '/') {
+        new_path[0] = '/';
+        len++;
+    }
 
-	while(*path && len < sizeof(new_path)) {
-		new_path[len++] = *path++;
-	}
+    while(*path && len < sizeof(new_path)) {
+        new_path[len++] = *path++;
+    }
 
+    /* Note : no need to check everything, it is faster this way */
     if (new_path[0]  != '/') return 0;
 //    if (new_path[1]  != 'v' && new_path[1] != 'V') return 0;
 //    if (new_path[2]  != 'o') return 0;
@@ -123,16 +152,17 @@ static void compute_new_path(char* new_path, char* path, int len, int is_save) {
     if (!is_save) {
         for (n = 0; n < sizeof(bss.mount_base) && bss.mount_base[n] != 0; n++) {
             new_path[n] = bss.mount_base[n];
-		}
-		// copy the content file path with slash at the beginning
+        }
+
+        // copy the content file path with slash at the beginning
         for (i = 0; i < (len - 12 - path_offset); i++) {
-			char cChar = path[12 + i + path_offset];
-			// skip double slashes
-			if((new_path[n-1] == '/') && (cChar == '/')) {
-				continue;
-			}
+            char cChar = path[12 + i + path_offset];
+            // skip double slashes
+            if((new_path[n-1] == '/') && (cChar == '/')) {
+                continue;
+            }
             new_path[n++] = cChar;
-		}
+        }
 
         new_path[n++] = '\0';
     }
@@ -145,41 +175,52 @@ static void compute_new_path(char* new_path, char* path, int len, int is_save) {
         if (path[10 + path_offset] == 'c') // common dir ("common")
         {
             new_path[n++] = 'c';
-			// copy the save game filename now with the slash at the beginning
+
+            // copy the save game filename now with the slash at the beginning
             for (i = 0; i < (len - 16 - path_offset); i++) {
                 char cChar = path[16 + path_offset + i];
-				// skip double slashes
-				if((new_path[n-1] == '/') && (cChar == '/')) {
-					continue;
-				}
-				new_path[n++] = cChar;
-			}
+                // skip double slashes
+                if((new_path[n-1] == '/') && (cChar == '/')) {
+                    continue;
+                }
+                new_path[n++] = cChar;
+            }
         }
         else if (path[10 + path_offset] == '8') // user dir ("800000??") ?? = user permanent id
         {
             new_path[n++] = 'u';
-			// copy the save game filename now with the slash at the beginning
+
+            // copy the save game filename now with the slash at the beginning
             for (i = 0; i < (len - 18 - path_offset); i++) {
                char cChar = path[18 + path_offset + i];
-				// skip double slashes
-				if((new_path[n-1] == '/') && (cChar == '/')) {
-					continue;
-				}
-				new_path[n++] = cChar;
-			}
+                // skip double slashes
+                if((new_path[n-1] == '/') && (cChar == '/')) {
+                    continue;
+                }
+                new_path[n++] = cChar;
+            }
         }
         new_path[n++] = '\0';
     }
 }
 
 static int GetCurClient(void *pClient, void *pCmd) {
-
     if ((int)bss_ptr != 0x0a000000) {
         int client = client_num(pClient);
         if (client >= 0) {
             // mount sd card in the same time
             if (!bss.sd_mount[client])
                 bss.sd_mount[client] = fs_mount_sd(bss.socket_fs[client], pClient, pCmd);
+            return client;
+        }
+    }
+    return -1;
+}
+
+static int GetCurClientNoSD(void *pClient) {
+    if ((int)bss_ptr != 0x0a000000) {
+        int client = client_num(pClient);
+        if (client >= 0) {
             return client;
         }
     }
@@ -212,16 +253,13 @@ DECL(int, FSInit, void) {
         __os_snprintf(bss.save_base, sizeof(bss.save_base), "%s%s/%s", CAFE_OS_SD_PATH, SD_SAVES_PATH, (char *)GAME_DIR_NAME);
 
         fs_connect(&bss.global_sock);
-
-        // in case there is no game selected
-//        if (bss.mount_base[16] == 0) { bss.mount_base[16] = '0'; bss.save_base[21] = '0'; }
-//        if (bss.mount_base[17] == 0) { bss.mount_base[17] = '0'; bss.save_base[22] = '0'; }
-//        if (bss.mount_base[18] == 0) { bss.mount_base[18] = '0'; bss.save_base[23] = '0'; }
-//        if (bss.mount_base[19] == 0) { bss.mount_base[19] = '0'; bss.save_base[24] = '0'; }
     }
     return real_FSInit();
 }
 DECL(int, FSShutdown, void) {
+    if ((int)bss_ptr != 0x0a000000) {
+        fs_disconnect(bss.global_sock);
+    }
     return real_FSShutdown();
 }
 
@@ -576,11 +614,15 @@ DECL(int, FSRemoveAsync, void *pClient, void *pCmd, char *path, int error, FSAsy
     return real_FSRemoveAsync(pClient, pCmd, path, error, asyncParams);
 }
 
+/* *****************************************************************************
+ * Dynamic RPL loading
+ * ****************************************************************************/
 static int CheckAndLoadRPL(const char *rpl) {
     // If we are in Smash Bros app
     if (*(volatile unsigned int *)RPX_NAME_PENDING == 0)
         return 0;
 
+    // Look for rpl name in our table
     for (int k = 1; k < (*(volatile unsigned int *)(RPX_RPL_ENTRY_COUNT)); k++)
     {
         s_rpx_rpl *rpl_struct = (s_rpx_rpl*)(RPX_RPL_ARRAY + k * sizeof(s_rpx_rpl));
@@ -683,6 +725,16 @@ static int CheckAndLoadRPL(const char *rpl) {
 }
 
 DECL(int, OSDynLoad_Acquire, char* rpl, unsigned int *handle, int r5 __attribute__((unused))) {
+    // Get only the filename (in case there is folders in the module name ... like zombiu)
+    char *ptr = rpl;
+    while(*ptr) {
+        if (*ptr == '/') {
+            rpl = ptr + 1;
+        }
+        ptr++;
+    }
+
+    // Look if RPL is in our table and load it from SD Card
     CheckAndLoadRPL(rpl);
 
     int result = real_OSDynLoad_Acquire(rpl, handle, 0);
@@ -723,6 +775,83 @@ DECL(int, OSDynLoad_IsModuleLoaded, char* rpl, unsigned int *handle, int r5 __at
 }
 
 /* *****************************************************************************
+ * Log functions
+ * ****************************************************************************/
+#if (USE_EXTRA_LOG_FUNCTIONS == 1)
+static void log_byte_for_client(void *pClient, char byte) {
+    int client = GetCurClientNoSD(pClient);
+    if (client != -1) {
+        log_byte(bss.socket_fs[client], byte);
+    }
+}
+
+DECL(int, FSCloseFile_log, void *pClient, void *pCmd, int fd, int error) {
+    log_byte_for_client(pClient, BYTE_CLOSE_FILE);
+    return real_FSCloseFile_log(pClient, pCmd, fd, error);
+}
+DECL(int, FSCloseDir_log, void *pClient, void *pCmd, int fd, int error) {
+    log_byte_for_client(pClient, BYTE_CLOSE_DIR);
+    return real_FSCloseDir_log(pClient, pCmd, fd, error);
+}
+DECL(int, FSFlushFile_log, void *pClient, void *pCmd, int fd, int error) {
+    log_byte_for_client(pClient, BYTE_FLUSH_FILE);
+    return real_FSFlushFile_log(pClient, pCmd, fd, error);
+}
+DECL(int, FSGetErrorCodeForViewer_log, void *pClient, void *pCmd) {
+    log_byte_for_client(pClient, BYTE_GET_ERROR_CODE_FOR_VIEWER);
+    return real_FSGetErrorCodeForViewer_log(pClient, pCmd);
+}
+DECL(int, FSGetLastError_log, void *pClient) {
+    log_byte_for_client(pClient, BYTE_GET_LAST_ERROR);
+    return real_FSGetLastError_log(pClient);
+}
+DECL(int, FSGetPosFile_log, void *pClient, void *pCmd, int fd, int *pos, int error) {
+    log_byte_for_client(pClient, BYTE_GET_POS_FILE);
+    return real_FSGetPosFile_log(pClient, pCmd, fd, pos, error);
+}
+DECL(int, FSGetStatFile_log, void *pClient, void *pCmd, int fd, void *buffer, int error) {
+    log_byte_for_client(pClient, BYTE_GET_STAT_FILE);
+    return real_FSGetStatFile_log(pClient, pCmd, fd, buffer, error);
+}
+DECL(int, FSIsEof_log, void *pClient, void *pCmd, int fd, int error) {
+    log_byte_for_client(pClient, BYTE_EOF);
+    return real_FSIsEof_log(pClient, pCmd, fd, error);
+}
+DECL(int, FSReadDir_log, void *pClient, void *pCmd, int fd, void *dir_entry, int error) {
+    log_byte_for_client(pClient, BYTE_READ_DIR);
+    return real_FSReadDir_log(pClient, pCmd, fd, dir_entry, error);
+}
+DECL(int, FSReadFile_log, void *pClient, void *pCmd, void *buffer, int size, int count, int fd, int flag, int error) {
+    log_byte_for_client(pClient, BYTE_READ_FILE);
+    return real_FSReadFile_log(pClient, pCmd, buffer, size, count, fd, flag, error);
+}
+DECL(int, FSReadFileWithPos_log, void *pClient, void *pCmd, void *buffer, int size, int count, int pos, int fd, int flag, int error) {
+    log_byte_for_client(pClient, BYTE_READ_FILE_WITH_POS);
+    return real_FSReadFileWithPos_log(pClient, pCmd, buffer, size, count, pos, fd, flag, error);
+}
+DECL(int, FSSetPosFile_log, void *pClient, void *pCmd, int fd, int pos, int error) {
+    log_byte_for_client(pClient, BYTE_SET_POS_FILE);
+    return real_FSSetPosFile_log(pClient, pCmd, fd, pos, error);
+}
+DECL(void, FSSetStateChangeNotification_log, void *pClient, int r4) {
+    log_byte_for_client(pClient, BYTE_SET_STATE_CHG_NOTIF);
+    real_FSSetStateChangeNotification_log(pClient, r4);
+}
+DECL(int, FSTruncateFile_log, void *pClient, void *pCmd, int fd, int error) {
+    log_byte_for_client(pClient, BYTE_TRUNCATE_FILE);
+    return real_FSTruncateFile_log(pClient, pCmd, fd, error);
+}
+DECL(int, FSWriteFile_log, void *pClient, void *pCmd, const void *source, int size, int count, int fd, FSFlag flag, int error) {
+    log_byte_for_client(pClient, BYTE_WRITE_FILE);
+    return real_FSWriteFile_log(pClient, pCmd, source, size, count, fd, flag, error);
+}
+DECL(int, FSWriteFileWithPos_log, void *pClient, void *pCmd, const void *source, int size, int count, int pos, int fd, FSFlag flag, int error) {
+    log_byte_for_client(pClient, BYTE_WRITE_FILE_WITH_POS);
+    return real_FSWriteFileWithPos_log(pClient, pCmd, source, size, count, pos, fd, flag, error);
+}
+#endif
+
+/* *****************************************************************************
  * Creates function pointer array
  * ****************************************************************************/
 #define MAKE_MAGIC(x) { x, my_ ## x, &real_ ## x }
@@ -732,11 +861,13 @@ struct magic_t {
     const void *replacement;
     const void *call;
 } methods[] __attribute__((section(".magic"))) = {
+    // Common FS functions
     MAKE_MAGIC(FSInit),
     MAKE_MAGIC(FSShutdown),
     MAKE_MAGIC(FSAddClientEx),
     MAKE_MAGIC(FSDelClient),
 
+    // Replacement functions
     MAKE_MAGIC(FSGetStat),
     MAKE_MAGIC(FSGetStatAsync),
     MAKE_MAGIC(FSOpenFile),
@@ -752,7 +883,28 @@ struct magic_t {
     MAKE_MAGIC(FSRemove),
     MAKE_MAGIC(FSRemoveAsync),
 
+    // Dynamic RPL loading functions
     MAKE_MAGIC(OSDynLoad_Acquire),
     MAKE_MAGIC(OSDynLoad_GetModuleName),
     MAKE_MAGIC(OSDynLoad_IsModuleLoaded),
+
+    // Log functions
+#if (USE_EXTRA_LOG_FUNCTIONS == 1)
+    MAKE_MAGIC(FSCloseFile_log),
+    MAKE_MAGIC(FSCloseDir_log),
+    MAKE_MAGIC(FSFlushFile_log),
+    MAKE_MAGIC(FSGetErrorCodeForViewer_log),
+    MAKE_MAGIC(FSGetLastError_log),
+    MAKE_MAGIC(FSGetPosFile_log),
+    MAKE_MAGIC(FSGetStatFile_log),
+    MAKE_MAGIC(FSIsEof_log),
+    MAKE_MAGIC(FSReadDir_log),
+    MAKE_MAGIC(FSReadFile_log),
+    MAKE_MAGIC(FSReadFileWithPos_log),
+    MAKE_MAGIC(FSSetPosFile_log),
+    MAKE_MAGIC(FSSetStateChangeNotification_log),
+    MAKE_MAGIC(FSTruncateFile_log),
+    MAKE_MAGIC(FSWriteFile_log),
+    MAKE_MAGIC(FSWriteFileWithPos_log),
+#endif
 };

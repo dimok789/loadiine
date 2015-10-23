@@ -7,6 +7,7 @@
 extern void addr_LOADER_Start(void);
 extern void addr_LOADER_Entry(void);
 extern void addr_LOADER_Prep(void);
+extern void addr_LiLoadRPLBasics_bef_LiWaitOneChunk(void);
 extern void addr_LiLoadRPLBasics_in_1_load(void);
 extern void addr_LiSetupOneRPL_after(void);
 extern void addr_GetNextBounce_1(void);

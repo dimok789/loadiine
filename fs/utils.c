@@ -45,6 +45,10 @@ error:
 
 void fs_disconnect(int sock) {
     CHECK_ERROR(sock == -1);
+
+    char byte = BYTE_DISCONNECT;
+    sendwait(sock, &byte, 1);
+
     socketclose(sock);
 error:
     return;
@@ -109,6 +113,18 @@ void log_string(int sock, const char* str, char flag_byte) {
         sendwait(sock, buffer, 1 + 4 + len_str);
     }
 
+    bss.lock = 0;
+}
+
+void log_byte(int sock, char byte) {
+    while (bss.lock) GX2WaitForVsync();
+    bss.lock = 1;
+
+    CHECK_ERROR(sock == -1);
+    
+    sendwait(sock, &byte, 1);
+    
+error:
     bss.lock = 0;
 }
 

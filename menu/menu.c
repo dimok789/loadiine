@@ -4,7 +4,7 @@
 /* Utils for the display */
 #define PRINT_TEXT1(x, y, str) { OSScreenPutFontEx(1, x, y, str); }
 #define PRINT_TEXT2(x, y, _fmt, ...) { __os_snprintf(msg, 80, _fmt, __VA_ARGS__); OSScreenPutFontEx(1, x, y, msg); }
-#define BTN_PRESSED (BUTTON_LEFT | BUTTON_RIGHT | BUTTON_UP | BUTTON_DOWN | BUTTON_A | BUTTON_B)
+#define BTN_PRESSED (BUTTON_LEFT | BUTTON_RIGHT | BUTTON_UP | BUTTON_DOWN | BUTTON_A | BUTTON_B | BUTTON_X)
 
 /* Static function definitions */
 static int IsRPX(FSDirEntry *dir_entry);
@@ -22,6 +22,14 @@ int _start(int argc, char *argv[]) {
         title_id != 0x000500101004A100 && // mii maker usa
         title_id != 0x000500101004A000)   // mii maker jpn
         return main(argc, argv);
+
+    /* ****************************************************************** */
+    /*           Get _SYSLaunchTitleByPathFromLauncher pointer            */
+    /* ****************************************************************** */
+    uint sysapp_handle;
+    OSDynLoad_Acquire("sysapp.rpl", &sysapp_handle);
+    void(*_SYSLaunchTitleByPathFromLauncher)(const char* path, int len, int zero) = 0;
+    OSDynLoad_FindExport(sysapp_handle, 0, "_SYSLaunchTitleByPathFromLauncher", &_SYSLaunchTitleByPathFromLauncher);
 
     /* ****************************************************************** */
     /*                              Init Memory                           */
@@ -122,6 +130,7 @@ int _start(int argc, char *argv[]) {
     uint8_t button_pressed = 1;
     uint8_t first_pass = 1;
     uint8_t launching = 0;
+    int     auto_launch = 0;
     uint8_t ready = 0;
     int     error;
 
@@ -176,7 +185,7 @@ int _start(int argc, char *argv[]) {
                 if (vpad_data.btn_hold & BUTTON_DOWN) game_sel = ((game_sel + 1) % game_count);
 
                 // Launch game
-                if (vpad_data.btn_hold & BUTTON_A)
+                if ((auto_launch = (vpad_data.btn_hold & BUTTON_A)) || (vpad_data.btn_hold & BUTTON_X))
                 {
                     launching = 1;
 
@@ -190,7 +199,7 @@ int _start(int argc, char *argv[]) {
                     path_index += __os_snprintf(&path[path_index], FS_MAX_MOUNTPATH_SIZE - path_index, "/%s%s", game_dir[game_sel], RPX_RPL_PATH);
 
                     // Open game folder
-                    if (FSOpenDir(pClient, pCmd, path, &game_dh, FS_RET_ALL_ERROR) == FS_STATUS_OK) // /vol/external01/_RPC/[title]/
+                    if (FSOpenDir(pClient, pCmd, path, &game_dh, FS_RET_ALL_ERROR) == FS_STATUS_OK) // /vol/external01/wiiu/[title]/code
                     {
                         // Look for rpx/rpl in the folder
                         FSDirEntry dir_entry;
@@ -239,6 +248,11 @@ int _start(int argc, char *argv[]) {
         if (launching)
         {
             if (ready) {
+                if (auto_launch) {
+                    // Launch smash bros disk without exiting to menu
+                    char buf_vol_odd[20] = "/vol/storage_odd03";
+                    _SYSLaunchTitleByPathFromLauncher(buf_vol_odd, 18, 0);
+                }
                 break;
             }
             PRINT_TEXT1(45, 17, "Can't launch game!");

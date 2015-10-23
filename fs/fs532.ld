@@ -1,7 +1,7 @@
 OUTPUT(fs532.elf);
 
 SECTIONS {
-	.text 0x011e0000 : {
+	.text 0x011df800 : {
 		server_ip = .;
 		. = . + 4;
 		*(.text._start);
@@ -31,6 +31,7 @@ PROVIDE(FSInit = 0x10683c8);
 PROVIDE(FSShutdown = 0x1068538);
 PROVIDE(FSAddClientEx = 0x10685fc);
 PROVIDE(FSDelClient = 0x1068a08);
+PROVIDE(FSInitCmdBlock = 0x01068c54);
 
 /* FS methods for path replacement */
 PROVIDE(FSOpenFile = 0x106ef7c);
@@ -48,21 +49,33 @@ PROVIDE(FSRenameAsync = 0x0106b66c);
 PROVIDE(FSRemove = 0x0106f960);
 PROVIDE(FSRemoveAsync = 0x0106b568);
 
-/* FS methods - log */
+/* FS methods - Used by Dynamic RPL loading */
+PROVIDE(FSReadFile = 0x106f108);
 PROVIDE(FSCloseFile = 0x106f088);
-PROVIDE(FSCloseFileAsync = 0x0106a46c);
-PROVIDE(FSSetPosFile = 0x106f530);
-PROVIDE(FSGetPosFile = 0x106f4c0);
-PROVIDE(FSGetStatFile = 0x106f5a0);
-PROVIDE(FSIsEof = 0x106f610);
-PROVIDE(FSReadFile = 0x106f108);
-PROVIDE(FSReadFileWithPos = 0x106f194);
-PROVIDE(FSReadFileAsync = 0x0106a808);
-PROVIDE(FSCloseDir = 0x0106f700);
-PROVIDE(FSGetCwd = 0x0106f870);
-PROVIDE(FSReadDir = 0x0106f780);
-PROVIDE(FSInitCmdBlock = 0x01068c54);
-PROVIDE(FSReadFile = 0x106f108);
+
+/* FS methods - log */
+PROVIDE(FSCloseFile_log = 0x106f088);
+PROVIDE(FSCloseFileAsync_log = 0x0106a46c);
+PROVIDE(FSSetPosFile_log = 0x106f530);
+PROVIDE(FSGetPosFile_log = 0x106f4c0);
+PROVIDE(FSGetStatFile_log = 0x106f5a0);
+PROVIDE(FSIsEof_log = 0x106f610);
+PROVIDE(FSReadFile_log = 0x106f108);
+PROVIDE(FSReadFileWithPos_log = 0x106f194);
+PROVIDE(FSReadFileAsync_log = 0x0106a808);
+PROVIDE(FSCloseDir_log = 0x0106f700);
+PROVIDE(FSGetCwd_log = 0x0106f870);
+PROVIDE(FSReadDir_log = 0x0106f780);
+PROVIDE(FSFlushFile_log = 0x0106f440);
+PROVIDE(FSGetErrorCodeForViewer_log = 0x0106c5d4); 
+PROVIDE(FSGetLastError_log = 0x0106c598);
+PROVIDE(FSGetLastErrorCodeForViewer_log = 0x0106c9c8);
+PROVIDE(FSSetStateChangeNotification_log = 0x01068e54);
+PROVIDE(FSSetCmdPriority_log = 0x0106cab4);
+PROVIDE(FSTruncateFile_log = 0x0106f3c0);
+PROVIDE(FSWriteFile_log = 0x0106f228);                  
+PROVIDE(FSWriteFileAsync_log = 0x0106aa08);
+PROVIDE(FSWriteFileWithPos_log = 0x0106f2b4);
 
 /* FS methods for sd card */
 PROVIDE(FSGetMountSource = 0x0106ec24);
