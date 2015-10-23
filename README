@@ -52,7 +52,7 @@
     - Press X to install the game, Mii Maker will finish loading. Quit the application.
         - Launch Super Smash Bros and wait for your Game/Application to load.
 
-- 8. Enjoy
+- 7. Enjoy
 
 - Note: When exiting the Game/Application, you must relaunch the Mii Maker and select the game again.
         If you don't, launching Super Smash Bros will result in a crash.
@@ -77,17 +77,17 @@ Setting Up RPX/RPL and Data Files
 2. In "games", create a new folder with the name of your app
     - ex : SDCARD/wiiu/games/MyApplication/
 
-3. In this folder, create two folders named "code"
+3. In this folder, create a folder named "code"
     - ex : SDCARD/wiiu/games/MyApplication/code
 
-3. Copy the game/homebrew RPX file in the "code" folder
-    - ex : SDCARD/wiiu/games/MyApplication/code/application.rpx
+4. Copy the game/homebrew RPX file in the "code" folder
+    - ex : SDCARD/wiiu/games/MyApplication/code/my_application.rpx
 
-4. Copy the game/homebrew RPL files in the "code" folder too
-    - ex : SDCARD/_wiiu/games/MyApplication/library1.rpl
-    - ex : SDCARD/_wiiu/games/MyApplication/library2.rpl
+5. Copy the game/homebrew RPL files in the "code" folder too
+    - ex : SDCARD/_wiiu/games/MyApplication/code/library1.rpl
+    - ex : SDCARD/_wiiu/games/MyApplication/code/library2.rpl
 
-5. Copy the "content" folder of your app/game inside your application folder
+6. Copy the "content" folder of your app/game inside your application folder
     - ex : SDCARD/wiiu/games/MyApplication/content/...
     - ex : H:/MyApplication/vol/content/data.bin -> SDCARD/wiiu/games/MyApplication/content/data.bin
     - ex : H:/MyApplication/vol/content/datab/datab.bin -> SDCARD/wiiu/games/MyApplication/content/datab/datab.bin
