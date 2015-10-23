@@ -92,7 +92,7 @@ Setting Up RPX/RPL and Data Files
     - ex : H:/MyApplication/vol/content/data.bin -> SDCARD/wiiu/games/MyApplication/content/data.bin
     - ex : H:/MyApplication/vol/content/datab/datab.bin -> SDCARD/wiiu/games/MyApplication/content/datab/datab.bin
 
-Note : Do not rename RPL files
+Note : Do not rename RPX and RPL files
 
 -------------------------------------------------------------------------------
 
