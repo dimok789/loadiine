@@ -1,0 +1,133 @@
+/******************************************************************************/
+/*                                                                            */
+/*                  _                     _ _ _                               */
+/*                 | |                   | (_(_)                              */
+/*                 | |     ___   __ _  __| |_ _ _ __   ___                    */
+/*                 | |    / _ \ / _` |/ _` | | | '_ \ / _ \                   */
+/*                 | |___| (_) | (_| | (_| | | | | | |  __/                   */
+/*                 ______/\___/ \__,_|\__,_|_|_|_| |_|\___| v2.0              */
+/*                                                                            */
+/*                  Remplacement de fichiers et de RPX/RPL                    */
+/*                                                                            */
+/******************************************************************************/
+
+- 1......Requis
+
+- 2......Comment utiliser Loadiine
+
+- 3......Préparation de la carte SD
+
+/******************************************************************************/
+/* Requis :                                                                   */
+/******************************************************************************/
+
+- WiiU FW 5.3.2
+- Carte SD(HC)
+- Le disque de Super Smash Bros (ou la version EShop)
+
+
+/******************************************************************************/
+/* Comment utiliser Loadiine :                                                */
+/******************************************************************************/
+
+- 1. Préparez la carte SD (voir ci-dessous)
+
+- 2. Dans le navigateur internet, lancez l'exploit kernel fournit (www/kexploit)
+(Vous devez avoir un exploit kernel modifié qui met l'adresse virtuelle 0xA0000000 à l'adresse physique 0x10000000)
+
+- 3. Relancez le navigateur internet.
+
+- 4. Insérez la carte SD si ce n'est pas déjà fait.
+
+- 5. Lancez loadiine (www/loadiine)
+    - Appuyez sur A pour lancer loadiine
+   ou
+    - Appuyez sur X pour lancer loadiine avec le serveur activé (le serveur doit être démarré avant d'appuyer sur X)
+
+- 6. Le menu de loadiine doit s'ouvrir. Choisissez votre application/jeu avec le pad.
+    - Appuyez sur A pour lancer directement le disque de Smash Bros. Cette méthode ne fonctionne pas pour tout le monde cependant.
+        - Note : si vous utilisez la version EShop de Smash Bros, appuyez sur X à la place.
+   ou
+    - Appuyez sur X pour installer le jeu, l'éditeur Mii se lance, quittez-le pour retourner au menu principal
+        - Lancez Super Smash Bros et attendez que votre jeu/application se lance
+
+- 7. Kiff
+
+- Note: Après avoir quitté l'application, vous devez relancer l'éditeur Mii et sélectionner l'application une nouvelle fois,
+        Si vous relancez Smash Bros sans faire ça, ça va crasher
+
+
+/******************************************************************************/
+/* Préparation de la carte SD, étapes pour ajouter une application :          */
+/******************************************************************************/
+
+Note: Vous pouvez ajouter plusieurs jeux/applications, mais toutes les étapes sont requises
+
+-------------------------------------------------------------------------------
+
+Préparation des fichiers RPX/RPL et des données
+
+1. Créez un dossier nommé "wiiu" à la racine de votre carte SD
+    - ex : SDCARD/wiiu
+
+2. Dans "wiiu", créez un dossier nommé "games"
+    - ex : SDCARD/wiiu/games
+
+3. Dans "games", créez un nouveau dossier avec le nom de votre application
+    - ex : SDCARD/wiiu/games/MyApplication/
+
+3. Dans ce dossier, créez un dossier "code"
+    - ex : SDCARD/wiiu/games/MyApplication/code
+
+4. Copiez dans ce dossier le fichier RPX de votre application
+    - ex : SDCARD/wiiu/games/MyApplication/code/my_application.rpx
+
+5. Copier également dans ce dossier les fichiers RPL de votre application
+    - ex : SDCARD/_wiiu/games/MyApplication/code/library1.rpl
+    - ex : SDCARD/_wiiu/games/MyApplication/code/library2.rpl
+
+6. Enfin, copiez le dossier "content" de votre jeu/homebrew dans le répertoire de votre application sur la carte SD
+    - ex : SDCARD/wiiu/games/MyApplication/content/...
+    - ex : H:/MyApplication/vol/content/data.bin -> SDCARD/wiiu/games/MyApplication/content/data.bin
+    - ex : H:/MyApplication/vol/content/datab/datab.bin -> SDCARD/wiiu/games/MyApplication/content/datab/datab.bin
+
+Note : Ne renommez pas les fichiers RPX et RPL
+
+-------------------------------------------------------------------------------
+
+Pour résumer :
+
+La structure de la carte SD doit ressembler à ça après avoir suivit les étapes :
+
+- SDCARD/wiiu/games/MyApplication/code/my_application.rpx
+- SDCARD/wiiu/games/MyApplication/code/*.rpl [only if application contains .rpl files]
+- SDCARD/wiiu/games/MyApplication/content/[content files/folders]
+
+
+/******************************************************************************/
+/* Contraintes :                                                              */
+/******************************************************************************/
+
+- La taille de chaque fichier RPX et RPL ne doit pas dépasser 25.47Mo (le total de ces fichiers par contre peut être plus grand)
+- N'allez pas dans les paramètres de la wiiu sinon ça casse tout
+
+
+/******************************************************************************/
+/* Notes :                                                                    */
+/******************************************************************************/
+
+- Si vous avez des problèmes avec les sauvegardes, essayez de supprimer vos sauvegardes de Smash Bros
+
+
+/******************************************************************************/
+/* Remerciements :                                                            */
+/******************************************************************************/
+
+- A tous les gens impliqués dans libwiiu et les exploits webkit/kernel !
+- Aux testeurs !
+
+
+Libre à vous de modifier ou améliorer ce programme.
+
+Golden45.
+Dimok.

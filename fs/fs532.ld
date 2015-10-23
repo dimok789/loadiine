@@ -1,7 +1,7 @@
 OUTPUT(fs532.elf);
 
 SECTIONS {
-	.text 0x011e0000 : {
+	.text 0x011df800 : {
 		server_ip = .;
 		. = . + 4;
 		*(.text._start);
@@ -50,19 +50,33 @@ PROVIDE(FSRenameAsync = 0x0106b66c);
 PROVIDE(FSRemove = 0x0106f960);
 PROVIDE(FSRemoveAsync = 0x0106b568);
 
-/* FS methods - log */
-PROVIDE(FSCloseFile = 0x106f088);
-PROVIDE(FSCloseFileAsync = 0x0106a46c);
-PROVIDE(FSSetPosFile = 0x106f530);
-PROVIDE(FSGetPosFile = 0x106f4c0);
-PROVIDE(FSGetStatFile = 0x106f5a0);
-PROVIDE(FSIsEof = 0x106f610);
+/* FS methods - Used by Dynamic RPL loading */
 PROVIDE(FSReadFile = 0x106f108);
-PROVIDE(FSReadFileWithPos = 0x106f194);
-PROVIDE(FSReadFileAsync = 0x0106a808);
-PROVIDE(FSCloseDir = 0x0106f700);
-PROVIDE(FSGetCwd = 0x0106f870);
-PROVIDE(FSReadDir = 0x0106f780);
+PROVIDE(FSCloseFile = 0x106f088);
+
+/* FS methods - log */
+PROVIDE(FSCloseFile_log = 0x106f088);
+PROVIDE(FSCloseFileAsync_log = 0x0106a46c);
+PROVIDE(FSSetPosFile_log = 0x106f530);
+PROVIDE(FSGetPosFile_log = 0x106f4c0);
+PROVIDE(FSGetStatFile_log = 0x106f5a0);
+PROVIDE(FSIsEof_log = 0x106f610);
+PROVIDE(FSReadFile_log = 0x106f108);
+PROVIDE(FSReadFileWithPos_log = 0x106f194);
+PROVIDE(FSReadFileAsync_log = 0x0106a808);
+PROVIDE(FSCloseDir_log = 0x0106f700);
+PROVIDE(FSGetCwd_log = 0x0106f870);
+PROVIDE(FSReadDir_log = 0x0106f780);
+PROVIDE(FSFlushFile_log = 0x0106f440);
+PROVIDE(FSGetErrorCodeForViewer_log = 0x0106c5d4); 
+PROVIDE(FSGetLastError_log = 0x0106c598);
+PROVIDE(FSGetLastErrorCodeForViewer_log = 0x0106c9c8);
+PROVIDE(FSSetStateChangeNotification_log = 0x01068e54);
+PROVIDE(FSSetCmdPriority_log = 0x0106cab4);
+PROVIDE(FSTruncateFile_log = 0x0106f3c0);
+PROVIDE(FSWriteFile_log = 0x0106f228);                  
+PROVIDE(FSWriteFileAsync_log = 0x0106aa08);
+PROVIDE(FSWriteFileWithPos_log = 0x0106f2b4);
 
 /* FS methods for sd card */
 PROVIDE(FSGetMountSource = 0x0106ec24);
@@ -80,19 +94,23 @@ PROVIDE(send = 0x10c16ac);
 PROVIDE(recv = 0x10c0aec);
 
 /* OS methods */
+PROVIDE(OSDynLoad_Acquire = 0x0102A31C);
+PROVIDE(OSDynLoad_IsModuleLoaded = 0x0102A504);
+PROVIDE(OSDynLoad_GetModuleName = 0x0102B960);
 PROVIDE(__os_snprintf = 0x102f09c);
 PROVIDE(OSDynLoad_FindExport = 0x102b790);
 PROVIDE(OSDynLoad_Acquire = 0x102a31c);
 PROVIDE(OSFatal = 0x1031368);
 PROVIDE(OSSetExceptionCallbackEx = 0x010443f8);
+PROVIDE(DCFlushRange = 0x1023ee8);
 
 
 /* Standard library methods */
 PROVIDE(memcpy = 0x1035a68);
 PROVIDE(memset = 0x1035a54);
 PROVIDE(MEMAllocFromDefaultHeapEx = 0x1004e9c0);
-PROVIDE(MEMAllocFromExpHeapEx = 0x010497b0);
 PROVIDE(MEMAllocFromDefaultHeap = 0x100b4878);
+PROVIDE(MEMAllocFromExpHeapEx = 0x010497b0);
 PROVIDE(MEMFreeToDefaultHeap = 0x100b487c);
 
 /* OS data */

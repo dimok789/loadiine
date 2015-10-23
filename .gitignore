@@ -1,4 +1,5 @@
-installer/bin/*
-loader/build/*
-menu/build/*
-fs/build/*
+/fs/build
+/installer/bin
+/loader/build
+/menu/build
+/server/logs/*.txt

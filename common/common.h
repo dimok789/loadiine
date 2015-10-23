@@ -1,6 +1,7 @@
 #ifndef COMMON_H
 #define	COMMON_H
 
+/* Loadiine common paths */
 #define CAFE_OS_SD_PATH         "/vol/external01"
 #define SD_LOADIINE_PATH        "/wiiu"
 #define GAMES_PATH               "/games"
@@ -16,16 +17,22 @@
 #define IS_ACTIVE_ADDR          (DATA_ADDR - 0x08)  // is replacement active
 #define RPL_REPLACE_ADDR        (DATA_ADDR - 0x0C)  // is it a new rpl to add
 #define RPL_ENTRY_INDEX_ADDR    (DATA_ADDR - 0x10)  // entry index of the rpx in our table
+#define IS_LOADING_RPX_ADDR     (DATA_ADDR - 0x14)  // used to know if we are currently loading a rpx or a rpl
 
 /* RPX Address : where the rpx is copied or retrieve, depends if we dump or replace */
 /* Note : from phys 0x30789C5D to 0x31E20000, memory seems empty (space reserved for root.rpx) which let us approximatly 22.5mB of memory free to put the rpx and additional rpls */
-#define MEM_BASE                ((void*)0xC0800000)
+// #define MEM_BASE                ((void*)0xC0800000)
+
+/* Note : from phys 0x2E609ABC to 0x2FF82C00, memory seems empty (space reserved for men.rpx) which let us approximatly 26.0mB of memory free to put the rpx and additional rpls */
+#define MEM_BASE                ((void*)0xBE60A000)
+
 #define MEM_SIZE                ((void*)(MEM_BASE - 0x04))
 #define MEM_OFFSET              ((void*)(MEM_BASE - 0x08))
-#define MEM_PART                ((void*)(MEM_BASE - 0x0C))
-#define RPX_NAME                ((void*)(MEM_BASE - 0x10))
-#define RPX_NAME_PENDING        ((void*)(MEM_BASE - 0x14))
-#define GAME_DIR_NAME           ((void*)(MEM_BASE - 0x100))
+#define MEM_AREA                ((void*)(MEM_BASE - 0x0C))
+#define MEM_PART                ((void*)(MEM_BASE - 0x10))
+#define RPX_NAME                ((void*)(MEM_BASE - 0x14))
+#define RPX_NAME_PENDING        ((void*)(MEM_BASE - 0x18))
+#define GAME_DIR_NAME           ((void*)(MEM_BASE - 0x200))
 
 /* RPX_RPL_ARRAY contains an array of multiple rpl/rpl structures: */
 /* Note : The first entry is always the one referencing the rpx (cf. struct s_rpx_rpl) */
@@ -47,8 +54,15 @@ typedef struct s_rpx_rpl
     int  address;
     int  size;
     int  offset;
-    char name[64]; // TODO: maybe set the exact same size than dir_entry->name
+    char name[512];
 } s_rpx_rpl;
+
+/* Log struct */
+//typedef struct _loader_debug_t
+//{
+//    unsigned int tag;
+//    unsigned int data;
+//} loader_debug_t;
 
 #endif	/* COMMON_H */
 
