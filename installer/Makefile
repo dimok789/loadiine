@@ -31,6 +31,7 @@ main532:
 	rm $(root)/*.o
 	$(LD) $(LDFLAGS) -s -o $(build)/code532.bin $(build)/launcher.o `find $(build) -name "*.o" ! -name "launcher.o"`
 	cp -rf $(build)/*.elf $(www_loadiine)
+	cp -rf $(build)/*.elf ../www/
 
 clean:
 	make -C ../menu/ clean
