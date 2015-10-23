@@ -1,0 +1,134 @@
+/******************************************************************************/
+/*                                                                            */
+/*                  _                     _ _ _                               */
+/*                 | |                   | (_(_)                              */
+/*                 | |     ___   __ _  __| |_ _ _ __   ___                    */
+/*                 | |    / _ \ / _` |/ _` | | | '_ \ / _ \                   */
+/*                 | |___| (_) | (_| | (_| | | | | | |  __/                   */
+/*                 ______/\___/ \__,_|\__,_|_|_|_| |_|\___| v2.0              */
+/*                                                                            */
+/*                    RPX/RPL and File Replacement Tool                       */
+/*                                                                            */
+/******************************************************************************/
+
+- 1......Requirements 
+
+- 2......How to Use 
+
+- 3......Preparing the SD Card 
+
+/******************************************************************************/
+/*                              Requirements                                  */
+/******************************************************************************/
+
+- Wii U FW 5.3.2
+- SD(HC) Card
+- Super Smash Bros for Wii U (Disc)
+
+
+/******************************************************************************/
+/*                               How to Use                                   */
+/******************************************************************************/
+
+- 1. Setup your SD Card (see below)
+
+- 2. In the Internet Browser, Launch the included kernel exploit (www/kexploit)
+(You need a modified kernel exploit that sets 0xA0000000 virtual memory range to 0x10000000 physical memory address)
+
+- 3. Relaunch the Internet Browser
+
+- 4. Insert your SD Card into the Wii U, if it's not already done.
+
+- 5. Launch loadiine (www/loadiine)
+    - Press A to install loadiine
+   or
+    - Press X to install loadiine with server enabled (use it for debug purpose, the server must be running before pressing X).
+
+- 6. The loadiine menu should open. Now, Select your App/Game using the D-Pad.
+    - Press A to launch Smash Bros disk, note that it does not work for everyone.
+        - Note : if you are using Smash Bros EShop version, press X instead.
+        - Your game should start
+   or
+    - Press X to install the game, Mii Maker will finish loading. Quit the application.
+        - Launch Super Smash Bros and wait for your Game/Application to load.
+
+- 8. Enjoy
+
+- Note: When exiting the Game/Application, you must relaunch the Mii Maker and select the game again.
+        If you don't, launching Super Smash Bros will result in a crash.
+
+
+/******************************************************************************/
+/* Preparing the SD Card / How to add a Game or Application                   */
+/******************************************************************************/
+
+Note: You may add multiple Games/Applications, but ALL STEPS are REQUIRED
+
+-------------------------------------------------------------------------------
+
+Setting Up RPX/RPL and Data Files
+
+1. Create a folder named "wiiu" in the root of the SD Card.
+    - ex : SDCARD/wiiu
+
+2. In "wiiu", create another folder named "games"
+    - ex : SDCARD/wiiu/games
+
+2. In "games", create a new folder with the name of your app
+    - ex : SDCARD/wiiu/games/MyApplication/
+
+3. In this folder, create two folders named "code"
+    - ex : SDCARD/wiiu/games/MyApplication/code
+
+3. Copy the game/homebrew RPX file in the "code" folder
+    - ex : SDCARD/wiiu/games/MyApplication/code/application.rpx
+
+4. Copy the game/homebrew RPL files in the "code" folder too
+    - ex : SDCARD/_wiiu/games/MyApplication/library1.rpl
+    - ex : SDCARD/_wiiu/games/MyApplication/library2.rpl
+
+5. Copy the "content" folder of your app/game inside your application folder
+    - ex : SDCARD/wiiu/games/MyApplication/content/...
+    - ex : H:/MyApplication/vol/content/data.bin -> SDCARD/wiiu/games/MyApplication/content/data.bin
+    - ex : H:/MyApplication/vol/content/datab/datab.bin -> SDCARD/wiiu/games/MyApplication/content/datab/datab.bin
+
+Note : Do not rename RPL files
+
+-------------------------------------------------------------------------------
+
+Summary
+
+Your file structure should look like this if the above information was used :
+
+- SDCARD/wiiu/games/MyApplication/code/my_application.rpx
+- SDCARD/wiiu/games/MyApplication/code/*.rpl [only if application contains .rpl files]
+- SDCARD/wiiu/games/MyApplication/content/[content files/folders]
+
+
+/******************************************************************************/
+/* Limitations :                                                              */
+/******************************************************************************/
+
+- The total size of each RPX and RPL filesmust be less than 25.47 MB
+- Don't go in the wiiu settings it breaks everything
+
+
+/******************************************************************************/
+/* Notes :                                                                    */
+/******************************************************************************/
+
+- If you have problems with saves, try delete your Smash Bros saves.
+
+
+/******************************************************************************/
+/* Special thanks :                                                           */
+/******************************************************************************/
+
+- To everyone involved in libwiiu and webkit/kernel exploit !
+- To the testers !
+
+
+Feel free to modify and improve this software.
+
+Golden45.
+Dimok.
