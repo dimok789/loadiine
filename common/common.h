@@ -1,6 +1,8 @@
 #ifndef COMMON_H
 #define	COMMON_H
 
+#define IS_USING_MII_MAKER      1
+
 /* Loadiine common paths */
 #define CAFE_OS_SD_PATH         "/vol/external01"
 #define SD_LOADIINE_PATH        "/wiiu"
@@ -28,6 +30,7 @@
 #define MEM_PART                ((void*)(MEM_BASE - 0x10))
 #define RPX_NAME                ((void*)(MEM_BASE - 0x14))
 #define RPX_NAME_PENDING        ((void*)(MEM_BASE - 0x18))
+#define GAME_LAUNCHED           ((void*)(MEM_BASE - 0x1C))
 #define GAME_DIR_NAME           ((void*)(MEM_BASE - 0x200))
 
 /* RPX_RPL_ARRAY contains an array of multiple rpl/rpl structures: */
@@ -38,7 +41,11 @@
 #define MEM_AREA_ARRAY          ((void*)0xC0790000)
 
 /* RPX Name : from which app/game, our rpx is launched */
-#define RPX_CHECK_NAME          0x63726F73  // 0xEFE00000 contains the rpx name, 0x63726F73 => cros (for smash brox : cross_f.rpx)
+#if (IS_USING_MII_MAKER == 0)
+    #define RPX_CHECK_NAME          0x63726F73  // 0xEFE00000 contains the rpx name, 0x63726F73 => cros (for smash brox : cross_f.rpx)
+#else
+    #define RPX_CHECK_NAME          0x66666C5F  // 0xEFE00000 contains the rpx name, 0x66666C5F => ffl_ (for mii maker : ffl_app.rpx)
+#endif
 
 /* Union for rpx name */
 typedef union uRpxName {

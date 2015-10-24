@@ -76,6 +76,10 @@ void LOADER_Start(void)
     if (*(volatile unsigned int *)0xEFE00000 != RPX_CHECK_NAME)
     {
         *(volatile unsigned int *)(RPX_NAME) = 0;
+        
+        #if (IS_USING_MII_MAKER == 1)
+            *(volatile unsigned int*)(GAME_LAUNCHED) = 0;
+        #endif
     }
 
     // return properly
@@ -149,8 +153,12 @@ void LOADER_Prep(void)
     // Reset
     *(volatile unsigned int *)(IS_ACTIVE_ADDR) = 0; // Set as inactive
 
-    // If we are in Smash Bros app
+    // If we are in Smash Bros app or Mii Maker
+#if (IS_USING_MII_MAKER == 0)
     if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME)
+#else
+    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (*(volatile unsigned int*)(GAME_LAUNCHED) == 1))
+#endif
     {
         // Check if it is an rpl we want, look for rpl name
         char* rpl_name = (char*)(*(volatile unsigned int *)(r29 + 0x08));
@@ -227,7 +235,11 @@ void LiLoadRPLBasics_bef_LiWaitOneChunk(void)
     );
 
     // If we are in Smash Bros app
+#if (IS_USING_MII_MAKER == 0)
     if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME)
+#else
+    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (*(volatile unsigned int*)(GAME_LAUNCHED) == 1))
+#endif
     {
         s_rpx_rpl *entry = 0;
 
@@ -291,7 +303,11 @@ void LiLoadRPLBasics_in_1_load(void)
 //    loader[1].tag = 0;
 
     // If we are in Smash Bros app
+#if (IS_USING_MII_MAKER == 0)
     if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME)
+#else
+    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (*(volatile unsigned int*)(GAME_LAUNCHED) == 1))
+#endif
     {
         // Check if it is an rpx, look for rpx name, if it is rpl, it is already marked
         int is_rpx = 0;
@@ -437,7 +453,11 @@ void LiSetupOneRPL_after(void)
     );
 
     // Do our stuff
+#if (IS_USING_MII_MAKER == 0)
     if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME)
+#else
+    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (*(volatile unsigned int*)(GAME_LAUNCHED) == 1))
+#endif
     {
         //*(volatile unsigned int *)(IS_ACTIVE_ADDR) = 0; // Set as inactive
 

@@ -1,5 +1,6 @@
 #include "launcher.h"
 #include "elf_abi.h"
+#include "../common/common.h"
 #include "../../libwiiu/src/coreinit.h"
 #include "../../libwiiu/src/vpad.h"
 #include "../../libwiiu/src/socket.h"
@@ -215,6 +216,9 @@ void _start()
             InstallFS(&private_data);
             /* patch server IP */
             *((volatile unsigned int *)(INSTALL_FS_ADDR + 0xC1000000)) = ip_address;
+            
+            /* Set GAME_LAUNCHED to 0 */
+            *(volatile unsigned int *)(GAME_LAUNCHED) = 0;
         }
 
         /* free memory allocated */

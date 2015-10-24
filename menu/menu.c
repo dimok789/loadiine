@@ -25,13 +25,25 @@ int _start(int argc, char *argv[]) {
         title_id != 0x000500101004A000)   // mii maker jpn
         return main(argc, argv);
 
+#if (IS_USING_MII_MAKER == 1)
+    // check if game is launched, if yes continue coreinit process
+    if (*(int*)(GAME_LAUNCHED) == 1)
+    {
+        return main(argc, argv);
+    }
+#endif
+    
     /* ****************************************************************** */
     /*           Get _SYSLaunchTitleByPathFromLauncher pointer            */
     /* ****************************************************************** */
     uint sysapp_handle;
     OSDynLoad_Acquire("sysapp.rpl", &sysapp_handle);
+
     void(*_SYSLaunchTitleByPathFromLauncher)(const char* path, int len, int zero) = 0;
     OSDynLoad_FindExport(sysapp_handle, 0, "_SYSLaunchTitleByPathFromLauncher", &_SYSLaunchTitleByPathFromLauncher);
+    
+    int(*SYSRelaunchTitle)(uint argc, char* argv) = 0;
+    OSDynLoad_FindExport(sysapp_handle, 0, "SYSRelaunchTitle", &SYSRelaunchTitle);
 
     /* ****************************************************************** */
     /*                 Get SYSRelaunchTitle pointer                       */
@@ -254,11 +266,19 @@ int _start(int argc, char *argv[]) {
         if (launching)
         {
             if (ready) {
+#if (IS_USING_MII_MAKER == 0)
                 if (auto_launch) {
                     // Launch smash bros disk without exiting to menu
                     char buf_vol_odd[20] = "/vol/storage_odd03";
                     _SYSLaunchTitleByPathFromLauncher(buf_vol_odd, 18, 0);
                 }
+#else
+                // Set game launched
+                *(int*)(GAME_LAUNCHED) = 1;
+
+                // Restart mii maker
+                SYSRelaunchTitle(0, NULL);
+#endif
                 break;
             }
             PRINT_TEXT1(45, 17, "Can't launch game!");
@@ -565,8 +585,8 @@ static void GenerateMemoryAreasTable()
 //        {0xB8000000 + 0x0387800C, 0xB8000000 + 0x03944938}, // 818 kB
 //        {0xB8000000 + 0x03944A08, 0xB8000000 + 0x03956E0C}, // 73 kB
 //        {0xB8000000 + 0x04A944A4, 0xB8000000 + 0x04ABAAC0}, // 153 kB
-        {0xB8000000 + 0x04ADE370, 0xB8000000 + 0x0520EAB8}, // 7361 kB      // ok
-        {0xB8000000 + 0x053B966C, 0xB8000000 + 0x058943C4}, // 4971 kB      // ok
+//        {0xB8000000 + 0x04ADE370, 0xB8000000 + 0x0520EAB8}, // 7361 kB      // ok
+//        {0xB8000000 + 0x053B966C, 0xB8000000 + 0x058943C4}, // 4971 kB      // ok
 //        {0xB8000000 + 0x058AD3D8, 0xB8000000 + 0x06000000}, // 7499 kB
 //        {0xB8000000 + 0x0638D320, 0xB8000000 + 0x063B0280}, // 139 kB
 //        {0xB8000000 + 0x063C39E0, 0xB8000000 + 0x063E62C0}, // 138 kB
@@ -577,7 +597,7 @@ static void GenerateMemoryAreasTable()
 //        {0xB8000000 + 0x0653A460, 0xB8000000 + 0x0655C300}, // 135 kB
 //        {0xB8000000 + 0x0658AA40, 0xB8000000 + 0x065BC4C0}, // 198 kB       // ok
 //        {0xB8000000 + 0x065E51A0, 0xB8000000 + 0x06608E80}, // 143 kB       // ok
-        {0xB8000000 + 0x06609ABC, 0xB8000000 + 0x07F82C00}, // 26084 kB     // ok
+//        {0xB8000000 + 0x06609ABC, 0xB8000000 + 0x07F82C00}, // 26084 kB     // ok
 
 //        {0xC0000000 + 0x000DCC9C, 0xC0000000 + 0x00180A00}, // 655 kB
 //        {0xC0000000 + 0x00180B60, 0xC0000000 + 0x001C0A00}, // 255 kB
@@ -587,6 +607,10 @@ static void GenerateMemoryAreasTable()
 //        {0xC0000000 + 0x003A745C, 0xC0000000 + 0x004D2B68}, // 1197 kB
 //        {0xC0000000 + 0x006D3334, 0xC0000000 + 0x00772204}, // 635 kB
 //        {0xC0000000 + 0x00789C60, 0xC0000000 + 0x007C6000}, // 240 kB
+//        {0xC0000000 + 0x00800000, 0xC0000000 + 0x01E20000}, // 22876 kB     // ok
+        
+        
+        {0xB8000000 + 0x06609ABC, 0xB8000000 + 0x07F82C00}, // 26084 kB     // ok
         {0xC0000000 + 0x00800000, 0xC0000000 + 0x01E20000}, // 22876 kB     // ok
 
         {0, 0}
