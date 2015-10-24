@@ -158,9 +158,12 @@ void LOADER_Prep(void)
         while (rpl_name[len])
             len++;
 
-        for (int k = 1; k < (*(volatile unsigned int *)(RPX_RPL_ENTRY_COUNT)); k++)
+        s_rpx_rpl *rpl_struct = (s_rpx_rpl*)(RPX_RPL_ARRAY);
+
+        do
         {
-            s_rpx_rpl *rpl_struct = (s_rpx_rpl*)(RPX_RPL_ARRAY + k * sizeof(s_rpx_rpl));
+            if(rpl_struct->is_rpx)
+                continue;
 
             int len2 = 0;
             while(rpl_struct->name[len2])
@@ -183,17 +186,18 @@ void LOADER_Prep(void)
             {
                 // Set rpl has to be added, and save entry index
                 *(volatile unsigned int *)(RPL_REPLACE_ADDR) = 1;
-                *(volatile unsigned int *)(RPL_ENTRY_INDEX_ADDR) = k;
+                *(volatile unsigned int *)(RPL_ENTRY_INDEX_ADDR) = (unsigned int)rpl_struct;
 
                 // Patch the loader instruction after LiWaitOneChunk to say : yes it's ok I have data =)
                 *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK1_AFTER1_ADDR)) = LI_WAIT_ONE_CHUNK1_AFTER1_NEW_INSTR;
                 *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK1_AFTER2_ADDR)) = LI_WAIT_ONE_CHUNK1_AFTER2_NEW_INSTR;
-                
+
                 FlushBlock(LI_WAIT_ONE_CHUNK1_AFTER1_ADDR);
                 FlushBlock(LI_WAIT_ONE_CHUNK1_AFTER2_ADDR);
                 break;
             }
         }
+        while((rpl_struct = rpl_struct->next) != 0);
     }
 
     // return properly
@@ -221,30 +225,33 @@ void LiLoadRPLBasics_bef_LiWaitOneChunk(void)
         :
         :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
     );
-    
+
     // If we are in Smash Bros app
     if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME)
     {
-        int interested = 0;
-        int entry = 0;
+        s_rpx_rpl *entry = 0;
 
         if (*(volatile unsigned int *)(RPL_REPLACE_ADDR) == 1)
         {
-            interested = 1;
-            entry = *(volatile unsigned int *)(RPL_ENTRY_INDEX_ADDR);
+            entry = (s_rpx_rpl *)( *(volatile unsigned int *)(RPL_ENTRY_INDEX_ADDR) );
         }
         else if (*(volatile unsigned int *)(IS_LOADING_RPX_ADDR) == 1)
         {
-            interested = 1;
-            entry = 0;
+            entry = (s_rpx_rpl*)(RPX_RPL_ARRAY);
+
+            while(entry)
+            {
+                if(entry->is_rpx)
+                    break;
+
+                entry = entry->next;
+            }
         }
-        
-        if (interested)
+
+        if (entry)
         {
             // Get rpx/rpl entry
-            s_rpx_rpl *rpx_rpl_struct = (s_rpx_rpl*)(RPX_RPL_ARRAY + entry * sizeof(s_rpx_rpl));
-            
-            int size = rpx_rpl_struct->size;
+            int size = entry->size;
             if (size > 0x400000)
                 size = 0x400000;
             *(volatile unsigned int*)(r3) = size;
@@ -287,24 +294,22 @@ void LiLoadRPLBasics_in_1_load(void)
     if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME)
     {
         // Check if it is an rpx, look for rpx name, if it is rpl, it is already marked
-        int interested = 0;
         int is_rpx = 0;
-        int entry = 0;
+        s_rpx_rpl * rpx_rpl_entry = 0;
 
         // Check if rpl is already marked
         if (*(volatile unsigned int *)(RPL_REPLACE_ADDR) == 1)
         {
-            interested = 1;
-            entry = *(volatile unsigned int *)(RPL_ENTRY_INDEX_ADDR);
+            rpx_rpl_entry = (s_rpx_rpl *) (*(volatile unsigned int *)(RPL_ENTRY_INDEX_ADDR));
 
             // Restore original instruction after LiWaitOneChunk
             *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK1_AFTER1_ADDR)) = LI_WAIT_ONE_CHUNK1_AFTER1_ORIG_INSTR;
             *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK1_AFTER2_ADDR)) = LI_WAIT_ONE_CHUNK1_AFTER2_ORIG_INSTR;
-            
+
             // Set new instructions
             *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER1_ADDR)) = LI_WAIT_ONE_CHUNK2_AFTER1_NEW_INSTR;
             *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER2_ADDR)) = LI_WAIT_ONE_CHUNK2_AFTER2_NEW_INSTR;
-            
+
             FlushBlock(LI_WAIT_ONE_CHUNK1_AFTER1_ADDR);
             FlushBlock(LI_WAIT_ONE_CHUNK1_AFTER2_ADDR);
             FlushBlock(LI_WAIT_ONE_CHUNK2_AFTER1_ADDR);
@@ -317,26 +322,29 @@ void LiLoadRPLBasics_in_1_load(void)
                 int val = *(volatile unsigned int *)(0xF6000000 + i);
                 if (val == 0x2e727078) // ".rpx"
                 {
-                    interested = 1;
                     is_rpx = 1;
-                    entry = 0;
+                    rpx_rpl_entry = (s_rpx_rpl*)(RPX_RPL_ARRAY);
+                    while(rpx_rpl_entry)
+                    {
+                        if(rpx_rpl_entry->is_rpx)
+                            break;
+
+                        rpx_rpl_entry = rpx_rpl_entry->next;
+                    }
                     break;
                 }
             }
         }
 
         // Copy RPX/RPL
-        if (interested)
+        if (rpx_rpl_entry)
         {
-            // Get rpx/rpl entry
-            s_rpx_rpl *rpx_rpl_struct = (s_rpx_rpl*)(RPX_RPL_ARRAY + entry * sizeof(s_rpx_rpl));
-
             // Copy rpx
-            s_mem_area *mem_area    = rpx_rpl_struct->area;
+            s_mem_area *mem_area    = rpx_rpl_entry->area;
             int mem_area_addr_start = mem_area->address;
             int mem_area_addr_end   = mem_area_addr_start + mem_area->size;
-            int mem_area_offset     = rpx_rpl_struct->offset;
-            int size                = rpx_rpl_struct->size;
+            int mem_area_offset     = rpx_rpl_entry->offset;
+            int size                = rpx_rpl_entry->size;
             if (size >= 0x400000) // TODO: put only > not >=
             {
                 // truncate size
@@ -369,7 +377,7 @@ void LiLoadRPLBasics_in_1_load(void)
             }
 
             // Reduce size and set offset
-            *(volatile unsigned int *)(MEM_SIZE)    = rpx_rpl_struct->size - size;
+            *(volatile unsigned int *)(MEM_SIZE)    = rpx_rpl_entry->size - size;
             *(volatile unsigned int *)(MEM_AREA)    = (int)mem_area;
             *(volatile unsigned int *)(MEM_OFFSET)  = mem_area_offset;
             *(volatile unsigned int *)(MEM_PART)    = 1;

@@ -33,7 +33,6 @@
 /* RPX_RPL_ARRAY contains an array of multiple rpl/rpl structures: */
 /* Note : The first entry is always the one referencing the rpx (cf. struct s_rpx_rpl) */
 #define RPX_RPL_ARRAY           ((void*)0xC07A0000)
-#define RPX_RPL_ENTRY_COUNT     ((void*)(RPX_RPL_ARRAY - 0x04))
 
 /* MEM_AREA_ARRAY contains empty memory areas address - linked */
 #define MEM_AREA_ARRAY          ((void*)0xC0790000)
@@ -48,21 +47,22 @@ typedef union uRpxName {
 } uRpxName;
 
 /* Struct used to organize empty memory areas */
-typedef struct s_mem_area s_mem_area;
-struct s_mem_area
+typedef struct _s_mem_area
 {
-    unsigned int    address;
-    unsigned int    size;
-    s_mem_area*     next;
-};
+    unsigned int        address;
+    unsigned int        size;
+    struct _s_mem_area* next;
+} s_mem_area;
 
 /* Struct used to organize rpx/rpl data in memory */
-typedef struct s_rpx_rpl
+typedef struct _s_rpx_rpl
 {
-    s_mem_area*     area;
-    unsigned int    offset;
-    unsigned int    size;
-    char            name[512];
+    struct _s_rpx_rpl* next;
+    s_mem_area*        area;
+    unsigned int       offset;
+    unsigned int       size;
+    unsigned char      is_rpx;
+    char               name[0];
 } s_rpx_rpl;
 
 /* Log struct */

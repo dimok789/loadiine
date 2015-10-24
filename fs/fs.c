@@ -615,7 +615,113 @@ DECL(int, FSRemoveAsync, void *pClient, void *pCmd, char *path, int error, FSAsy
 }
 
 /* *****************************************************************************
- * Dynamic RPL loading
+ * Dynamic RPL loading to memory
+ * ****************************************************************************/
+static int LoadRPLToMemory(s_rpx_rpl *rpl_entry)
+{
+    if ((int)bss_ptr != 0x0a000000)
+    {
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) found and loading", rpl_entry->name);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+    }
+
+    // initialize FS
+    FSInit();
+    FSClient *pClient = (FSClient*) MEMAllocFromDefaultHeap(sizeof(FSClient));
+    if (!pClient)
+        return 0;
+
+    FSCmdBlock *pCmd = (FSCmdBlock*) MEMAllocFromDefaultHeap(sizeof(FSCmdBlock));
+    if (!pCmd)
+    {
+        MEMFreeToDefaultHeap(pClient);
+        return 0;
+    }
+
+    // calculate path length for SD access of RPL
+    int path_len = strlen(CAFE_OS_SD_PATH) + strlen(SD_GAMES_PATH) + strlen((char *)GAME_DIR_NAME) + strlen(RPX_RPL_PATH) + strlen(rpl_entry->name) + 3;
+    char *path_rpl = MEMAllocFromDefaultHeap(path_len);
+    if(!path_rpl) {
+        MEMFreeToDefaultHeap(pCmd);
+        MEMFreeToDefaultHeap(pClient);
+        return 0;
+    }
+    // create path
+    __os_snprintf(path_rpl, path_len, "%s%s/%s%s/%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, (char *)GAME_DIR_NAME, RPX_RPL_PATH, rpl_entry->name);
+
+    // malloc mem for read file
+    unsigned char* dataBuf = (unsigned char*)MEMAllocFromDefaultHeapEx(0x1000, 0x40);
+    if(!dataBuf) {
+        MEMFreeToDefaultHeap(pCmd);
+        MEMFreeToDefaultHeap(pClient);
+        MEMFreeToDefaultHeap(path_rpl);
+        return 0;
+    }
+
+    // do more initial FS stuff
+    FSInitCmdBlock(pCmd);
+    FSAddClientEx(pClient, 0, FS_RET_NO_ERROR);
+
+    int fd = 0;
+    if (real_FSOpenFile(pClient, pCmd, path_rpl, "r", &fd, FS_RET_ALL_ERROR) == FS_STATUS_OK)
+    {
+        int ret;
+
+        // Get current memory area
+        s_mem_area* mem_area    = (s_mem_area*)(MEM_AREA_ARRAY);
+        int mem_area_addr_start = mem_area->address;
+        int mem_area_addr_end   = mem_area->address + mem_area->size;
+        int mem_area_offset     = 0;
+
+        // Copy rpl in memory
+        while ((ret = FSReadFile(pClient, pCmd, dataBuf, 0x1, 0x1000, fd, 0, FS_RET_ALL_ERROR)) > 0)
+        {
+            // Copy in memory and save offset
+            for (int j = 0; j < ret; j++)
+            {
+                if ((mem_area_addr_start + mem_area_offset) >= mem_area_addr_end)
+                {
+                    // Set next memory area
+                    mem_area            = mem_area->next;
+                    mem_area_addr_start = mem_area->address;
+                    mem_area_addr_end   = mem_area->address + mem_area->size;
+                    mem_area_offset     = 0;
+                }
+                *(volatile unsigned char*)(mem_area_addr_start + mem_area_offset) = dataBuf[j];
+                mem_area_offset += 1;
+            }
+            rpl_entry->size += ret;
+        }
+
+        // Fill rpl entry
+        rpl_entry->area = (s_mem_area*)(MEM_AREA_ARRAY);
+        rpl_entry->offset = 0;
+
+        // flush memory
+        // DCFlushRange((void*)rpl_entry, sizeof(s_rpx_rpl));
+        // DCFlushRange((void*)rpl_entry->address, rpl_entry->size);
+
+        if ((int)bss_ptr != 0x0a000000)
+        {
+            char buffer[200];
+            __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) file loaded 0x%08X %i", rpl_entry->name, rpl_entry->area->address, rpl_entry->size);
+            log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+        }
+
+        FSCloseFile(pClient, pCmd, fd, FS_RET_NO_ERROR);
+    }
+
+    FSDelClient(pClient);
+    MEMFreeToDefaultHeap(dataBuf);
+    MEMFreeToDefaultHeap(pCmd);
+    MEMFreeToDefaultHeap(pClient);
+    MEMFreeToDefaultHeap(path_rpl);
+    return 1;
+}
+
+/* *****************************************************************************
+ * Searching for RPL to load
  * ****************************************************************************/
 static int CheckAndLoadRPL(const char *rpl) {
     // If we are in Smash Bros app
@@ -623,20 +729,24 @@ static int CheckAndLoadRPL(const char *rpl) {
         return 0;
 
     // Look for rpl name in our table
-    for (int k = 1; k < (*(volatile unsigned int *)(RPX_RPL_ENTRY_COUNT)); k++)
+    s_rpx_rpl *rpl_entry = (s_rpx_rpl*)(RPX_RPL_ARRAY);
+
+    do
     {
-        s_rpx_rpl *rpl_struct = (s_rpx_rpl*)(RPX_RPL_ARRAY + k * sizeof(s_rpx_rpl));
+        if(rpl_entry->is_rpx)
+            continue;
 
         int len = strlen(rpl);
-        int len2 = strlen(rpl_struct->name);
+        int len2 = strlen(rpl_entry->name);
         if ((len != len2) && (len != (len2 - 4))) {
             continue;
         }
 
+        // compare name string case insensitive and without ".rpl" extension
         int found = 1;
         for (int x = 0; x < len; x++)
         {
-            if (toupper(rpl_struct->name[x]) != toupper(rpl[x]))
+            if (toupper(rpl_entry->name[x]) != toupper(rpl[x]))
             {
                 found = 0;
                 break;
@@ -644,101 +754,9 @@ static int CheckAndLoadRPL(const char *rpl) {
         }
 
         if (found)
-        {
-            if ((int)bss_ptr != 0x0a000000)
-            {
-                char buffer[200];
-                __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) found and loading", rpl);
-                log_string(bss.global_sock, buffer, BYTE_LOG_STR);
-            }
-
-            // initialize FS
-            FSInit();
-            FSClient *pClient = (FSClient*) MEMAllocFromDefaultHeap(sizeof(FSClient));
-            if (!pClient)
-                return 0;
-
-            FSCmdBlock *pCmd = (FSCmdBlock*) MEMAllocFromDefaultHeap(sizeof(FSCmdBlock));
-            if (!pCmd)
-            {
-                MEMFreeToDefaultHeap(pClient);
-                return 0;
-            }
-
-            // calculate path length for SD access of RPL
-            int path_len = strlen(CAFE_OS_SD_PATH) + strlen(SD_GAMES_PATH) + strlen((char *)GAME_DIR_NAME) + strlen(RPX_RPL_PATH) + strlen(rpl_struct->name) + 3;
-            char *path_rpl = MEMAllocFromDefaultHeap(path_len);
-            if(!path_rpl) {
-                MEMFreeToDefaultHeap(pCmd);
-                MEMFreeToDefaultHeap(pClient);
-                return 0;
-            }
-            // create path
-            __os_snprintf(path_rpl, path_len, "%s%s/%s%s/%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, (char *)GAME_DIR_NAME, RPX_RPL_PATH, rpl_struct->name);
-
-            // do more initial FS stuff
-            FSInitCmdBlock(pCmd);
-            FSAddClientEx(pClient, 0, FS_RET_NO_ERROR);
-
-            int fd = 0;
-            if (real_FSOpenFile(pClient, pCmd, path_rpl, "r", &fd, FS_RET_ALL_ERROR) == FS_STATUS_OK)
-            {
-                // malloc mem for read file
-                unsigned char* dataBuf = (unsigned char*)MEMAllocFromDefaultHeapEx(0x1000, 0x40);
-                int ret;
-                
-                // Get current memory area
-                s_mem_area* mem_area    = (s_mem_area*)(MEM_AREA_ARRAY);
-                int mem_area_addr_start = mem_area->address;
-                int mem_area_addr_end   = mem_area->address + mem_area->size;
-                int mem_area_offset     = 0;
-
-                // Copy rpl in memory
-                while ((ret = FSReadFile(pClient, pCmd, dataBuf, 0x1, 0x1000, fd, 0, FS_RET_ALL_ERROR)) > 0)
-                {
-                    // Copy in memory and save offset
-                    for (int j = 0; j < ret; j++)
-                    {
-                        if ((mem_area_addr_start + mem_area_offset) >= mem_area_addr_end)
-                        {
-                            // Set next memory area
-                            mem_area            = mem_area->next;
-                            mem_area_addr_start = mem_area->address;
-                            mem_area_addr_end   = mem_area->address + mem_area->size;
-                            mem_area_offset     = 0;
-                        }
-                        *(volatile unsigned char*)(mem_area_addr_start + mem_area_offset) = dataBuf[j];
-                        mem_area_offset += 1;
-                    }
-                    rpl_struct->size += ret;
-                }
-
-                // Fill rpl entry
-                rpl_struct->area = (s_mem_area*)(MEM_AREA_ARRAY);
-                rpl_struct->offset = 0;
-
-                // flush memory
-                // DCFlushRange((void*)rpl_struct, sizeof(s_rpx_rpl));
-                // DCFlushRange((void*)rpl_struct->address, rpl_struct->size);
-
-                if ((int)bss_ptr != 0x0a000000)
-                {
-                    char buffer[200];
-                    __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) file loaded 0x%08X %i", rpl, rpl_struct->area->address, rpl_struct->size);
-                    log_string(bss.global_sock, buffer, BYTE_LOG_STR);
-                }
-
-                FSCloseFile(pClient, pCmd, fd, FS_RET_NO_ERROR);
-                MEMFreeToDefaultHeap(dataBuf);
-            }
-
-            FSDelClient(pClient);
-            MEMFreeToDefaultHeap(pCmd);
-            MEMFreeToDefaultHeap(pClient);
-            MEMFreeToDefaultHeap(path_rpl);
-            return 1;
-        }
+            return LoadRPLToMemory(rpl_entry);
     }
+    while((rpl_entry = rpl_entry->next) != 0);
 
     return 0;
 }

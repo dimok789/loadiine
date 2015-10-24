@@ -202,6 +202,10 @@ int _start(int argc, char *argv[]) {
                     while (cur_game_dir[len])
                         len++;
 
+                    // initialize the RPL/RPX table first entry to zero + 1 byte for name zero termination
+                    // just in case no RPL/RPX are found, though it wont boot then anyway
+                    memset(RPX_RPL_ARRAY, 0, sizeof(s_rpx_rpl) + 1);
+
                     // Create base folder string
                     path_index += __os_snprintf(&path[path_index], FS_MAX_MOUNTPATH_SIZE - path_index, "/%s%s", game_dir[game_sel], RPX_RPL_PATH);
 
@@ -211,7 +215,7 @@ int _start(int argc, char *argv[]) {
                         // Look for rpx/rpl in the folder
                         FSDirEntry dir_entry;
                         int is_okay = 0;
-                        int cur_rpl = 0;
+                        int cur_entry = 0;
                         while (FSReadDir(pClient, pCmd, game_dh, &dir_entry, FS_RET_ALL_ERROR) == FS_STATUS_OK)
                         {
                             // Check if it is an rpx or rpl and copy it
@@ -221,20 +225,16 @@ int _start(int argc, char *argv[]) {
 
                             if (is_rpx)
                             {
-                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, path_index, 1, 0);
+                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, path_index, 1, cur_entry++);
                                 CreateGameSaveDir(pClient, pCmd, game_dir[game_sel], mount_path);
                             }
                             else
                             {
-                                cur_rpl++;
-                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, path_index, 0, cur_rpl);
+                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, path_index, 0, cur_entry++);
                             }
                             if (is_okay == 0)
                                 break;
                         }
-
-                        // Save the number of rpx/rpl
-                        *(volatile unsigned int*)(RPX_RPL_ENTRY_COUNT) = 1 + cur_rpl;
 
                         // copy the game name to a place we know for later
                         memcpy(GAME_DIR_NAME, game_dir[game_sel], len+1);
@@ -290,6 +290,13 @@ int _start(int argc, char *argv[]) {
     return main(argc, argv);
 }
 
+static int strlen(const char* str) {
+    int i = 0;
+    while (str[i])
+        i++;
+    return i;
+}
+
 /* IsRPX */
 static int IsRPX(FSDirEntry *dir_entry)
 {
@@ -311,6 +318,31 @@ static int IsRPX(FSDirEntry *dir_entry)
     return -1;
 }
 
+static void Add_RPX_RPL_Entry(const char *name, int size, int is_rpx, int entry_index){
+    // fill rpx/rpl entry
+    s_rpx_rpl * rpx_rpl_data = (s_rpx_rpl *)(RPX_RPL_ARRAY);
+    // get to last entry
+    while(rpx_rpl_data->next) {
+        rpx_rpl_data = rpx_rpl_data->next;
+    }
+
+    // setup next entry on the previous one (only if it is not the first entry)
+    if(entry_index > 0) {
+        rpx_rpl_data->next = (s_rpx_rpl *)( ((unsigned int)rpx_rpl_data) + sizeof(s_rpx_rpl) + strlen(rpx_rpl_data->name) + 1 );
+        rpx_rpl_data = rpx_rpl_data->next;
+    }
+
+    // setup current entry
+    rpx_rpl_data->area = (s_mem_area*)(MEM_AREA_ARRAY);
+    rpx_rpl_data->size = size;
+    rpx_rpl_data->offset = 0;
+    rpx_rpl_data->is_rpx = is_rpx;
+    rpx_rpl_data->next = 0;
+    // copy string length + 0 termination
+    memcpy(rpx_rpl_data->name, name, strlen(name) + 1);
+
+}
+
 /* Copy_RPX_RPL */
 static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_entry, char *path, int path_index, int is_rpx, int entry_index)
 {
@@ -325,9 +357,7 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
     memcpy(path_game, path, FS_MAX_MOUNTPATH_SIZE);
 
     // Get rpx/rpl filename length
-    int len = 0;
-    while (dir_entry->name[len])
-        len++;
+    int len = strlen(dir_entry->name);
 
     // Concatenate rpl filename
     path_game[path_index++] = '/';
@@ -338,20 +368,8 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
     // For RPLs :
     if(!is_rpx)
     {
-        // fill rpx/rpl entry
-        s_rpx_rpl rpx_rpl_data;
-        if(len > sizeof(rpx_rpl_data.name)-1) {
-            len = sizeof(rpx_rpl_data.name)-1;
-        }
-
-        memset(&rpx_rpl_data, 0, sizeof(s_rpx_rpl));
-        rpx_rpl_data.area = (s_mem_area*)(MEM_AREA_ARRAY);
-        rpx_rpl_data.size = 0;
-        rpx_rpl_data.offset = 0;
-        memcpy(rpx_rpl_data.name, dir_entry->name, len);
-
-        // copy rpx/rpl entry
-        memcpy(RPX_RPL_ARRAY + entry_index * sizeof(s_rpx_rpl), &rpx_rpl_data, sizeof(s_rpx_rpl));
+        // fill rpl entry
+        Add_RPX_RPL_Entry(dir_entry->name, 0, is_rpx, entry_index);
 
         // free path
         free(path_game);
@@ -393,21 +411,8 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
             cur_size += ret;
         }
 
-        // fill rpx/rpl entry
-        s_rpx_rpl rpx_rpl_data;
-        if(len > sizeof(rpx_rpl_data.name)-1) {
-            len = sizeof(rpx_rpl_data.name)-1;
-        }
-
-        // set rpx/rpl params : address, size and name
-        memset(&rpx_rpl_data, 0, sizeof(s_rpx_rpl));
-        rpx_rpl_data.area   = (s_mem_area*)(MEM_AREA_ARRAY);
-        rpx_rpl_data.offset = 0;
-        rpx_rpl_data.size   = cur_size;
-        memcpy(rpx_rpl_data.name, dir_entry->name, len);
-
-        // copy rpx/rpl entry
-        memcpy(RPX_RPL_ARRAY + entry_index * sizeof(s_rpx_rpl), &rpx_rpl_data, sizeof(s_rpx_rpl));
+        // fill rpx entry
+        Add_RPX_RPL_Entry(dir_entry->name, cur_size, is_rpx, entry_index);
 
         // Set rpx name (not really needed anymore)
         uRpxName rpx;
@@ -513,7 +518,7 @@ static void CreateGameSaveDir(FSClient *pClient, FSCmdBlock *pCmd, const char *g
 /* Create memory areas arrays */
 static void GenerateMemoryAreasTable()
 {
-    int mem_vals[][2] = 
+    static const int mem_vals[][2] =
     {
         // TODO: Check which of those areas are usable
 //        {0xB8000000 + 0x000DCC9C, 0xB8000000 + 0x00174F80}, // 608 kB
@@ -583,7 +588,7 @@ static void GenerateMemoryAreasTable()
 //        {0xC0000000 + 0x006D3334, 0xC0000000 + 0x00772204}, // 635 kB
 //        {0xC0000000 + 0x00789C60, 0xC0000000 + 0x007C6000}, // 240 kB
         {0xC0000000 + 0x00800000, 0xC0000000 + 0x01E20000}, // 22876 kB     // ok
-        
+
         {0, 0}
     }; // total : 66mB + 25mB
 
@@ -599,16 +604,14 @@ static void GenerateMemoryAreasTable()
 static void AddMemoryArea(int start, int end, int cur_index)
 {
     // Create and copy new memory area
-    s_mem_area mem_area;
-    mem_area.address = start;
-    mem_area.size    = end - start;
-
-    memcpy(MEM_AREA_ARRAY + cur_index * sizeof(s_mem_area), &mem_area, sizeof(s_mem_area));
+    s_mem_area *mem_area = (s_mem_area *) (MEM_AREA_ARRAY);
+    mem_area[cur_index].address = start;
+    mem_area[cur_index].size    = end - start;
+    mem_area[cur_index].next    = 0;
 
     // Fill pointer to this area in the previous area
     if (cur_index > 0)
     {
-        s_mem_area* mem_area_previous = (s_mem_area*)(MEM_AREA_ARRAY + (cur_index - 1) * sizeof(s_mem_area));
-        mem_area_previous->next = (s_mem_area*)(MEM_AREA_ARRAY + cur_index * sizeof(s_mem_area));
+        mem_area[cur_index - 1].next = mem_area;
     }
 }
