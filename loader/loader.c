@@ -66,6 +66,7 @@ void LOADER_Start(void)
     *(volatile unsigned int *)(BOUNCE_FLAG_ADDR) = 0;         // Bounce flag off
     *(volatile unsigned int *)(IS_ACTIVE_ADDR) = 0;           // replacement off
     *(volatile unsigned int *)(MEM_OFFSET) = 0;               // RPX/RPL load offset
+    *(volatile unsigned int *)(MEM_AREA) = 0;                 // RPX/RPL current memory area
     *(volatile unsigned int *)(MEM_PART) = 0;                 // RPX/RPL part to fill (0=0xF6000000-0xF6400000, 1=0xF6400000-0xF6800000)
     *(volatile unsigned int *)(RPL_REPLACE_ADDR) = 0;         // Reset
     *(volatile unsigned int *)(RPL_ENTRY_INDEX_ADDR) = 0;     // Reset
@@ -331,8 +332,11 @@ void LiLoadRPLBasics_in_1_load(void)
             s_rpx_rpl *rpx_rpl_struct = (s_rpx_rpl*)(RPX_RPL_ARRAY + entry * sizeof(s_rpx_rpl));
 
             // Copy rpx
-            int address = rpx_rpl_struct->address;
-            int size    = rpx_rpl_struct->size;
+            s_mem_area *mem_area    = rpx_rpl_struct->area;
+            int mem_area_addr_start = mem_area->address;
+            int mem_area_addr_end   = mem_area_addr_start + mem_area->size;
+            int mem_area_offset     = rpx_rpl_struct->offset;
+            int size                = rpx_rpl_struct->size;
             if (size >= 0x400000) // TODO: put only > not >=
             {
                 // truncate size
@@ -350,15 +354,25 @@ void LiLoadRPLBasics_in_1_load(void)
                 *(volatile unsigned int*)(RPL_REPLACE_ADDR) = 0;
             }
 
+            // Replace rpx/rpl data
             for (int i = 0; i < (size / 4); i++)
             {
-                *(volatile unsigned int *)(0xF6000000 + i * 4) = *(volatile unsigned int *)(address + i * 4);
+                if ((mem_area_addr_start + mem_area_offset) >= mem_area_addr_end) // TODO: maybe >, not >=
+                {
+                    mem_area            = mem_area->next;
+                    mem_area_addr_start = mem_area->address;
+                    mem_area_addr_end   = mem_area_addr_start + mem_area->size;
+                    mem_area_offset     = 0;
+                }
+                *(volatile unsigned int *)(0xF6000000 + i * 4) = *(volatile unsigned int *)(mem_area_addr_start + mem_area_offset);
+                mem_area_offset += 4;
             }
 
             // Reduce size and set offset
-            *(volatile unsigned int *)(MEM_SIZE) = rpx_rpl_struct->size - size;
-            *(volatile unsigned int *)(MEM_OFFSET) = address + size;
-            *(volatile unsigned int *)(MEM_PART) = 1;
+            *(volatile unsigned int *)(MEM_SIZE)    = rpx_rpl_struct->size - size;
+            *(volatile unsigned int *)(MEM_AREA)    = (int)mem_area;
+            *(volatile unsigned int *)(MEM_OFFSET)  = mem_area_offset;
+            *(volatile unsigned int *)(MEM_PART)    = 1;
 
             // If rpx/rpl size is less than 0x400000 bytes, we need to stop here
             if (is_rpx)
@@ -642,6 +656,7 @@ void LiRefillBounceBufferForReading_af_getbounce(void)
 //    loader[0].data = *(volatile unsigned int *)0xEFE00000;
 //    loader[1].tag = 0;
 
+    // If a bounce is waiting
     int is_bounce_flag_on = *(volatile unsigned int *)(BOUNCE_FLAG_ADDR);
     if (is_bounce_flag_on)
     {
@@ -656,19 +671,32 @@ void LiRefillBounceBufferForReading_af_getbounce(void)
         // Get where rpx/rpl code needs to be copied
         int base = 0xF6000000 + (*(volatile unsigned int *)(MEM_PART) * 0x400000);
 
-        // Get from where we copy the rpx/rpl
-        int offset = *(volatile unsigned int *)(MEM_OFFSET);
+        // Get current memory area
+        s_mem_area* mem_area    = (s_mem_area*)(*(volatile unsigned int *)(MEM_AREA));
+        int mem_area_addr_start = mem_area->address;
+        int mem_area_addr_end   = mem_area_addr_start + mem_area->size;
+        int mem_area_offset     = *(volatile unsigned int *)(MEM_OFFSET);
 
         // Copy rpx/rpl data
         for (i = 0; i < (size / 4); i++)
         {
-            *(volatile unsigned int *)(base + i * 4) = *(volatile unsigned int *)(offset + i * 4);
+            if ((mem_area_addr_start + mem_area_offset) >= mem_area_addr_end)
+            {
+                // Set new memory area
+                mem_area            = mem_area->next;
+                mem_area_addr_start = mem_area->address;
+                mem_area_addr_end   = mem_area_addr_start + mem_area->size;
+                mem_area_offset     = 0;
+            }
+            *(volatile unsigned int *)(base + i * 4) = *(volatile unsigned int *)(mem_area_addr_start + mem_area_offset);
+            mem_area_offset += 4;
         }
 
         // Reduce size and set offset
-        *(volatile unsigned int *)(MEM_SIZE)   = *(volatile unsigned int *)(MEM_SIZE) - size;
-        *(volatile unsigned int *)(MEM_OFFSET) = offset + size;
-        *(volatile unsigned int *)(MEM_PART)   = (*(volatile unsigned int *)(MEM_PART) + 1) % 2;
+        *(volatile unsigned int*)(MEM_SIZE)   = *(volatile unsigned int*)(MEM_SIZE) - size;
+        *(volatile unsigned int*)(MEM_AREA)   = (int)mem_area;
+        *(volatile unsigned int*)(MEM_OFFSET) = mem_area_offset;
+        *(volatile unsigned int*)(MEM_PART)   = (*(volatile unsigned int *)(MEM_PART) + 1) % 2;
 
         // Replace remaining size in loader memory
         if (size != 0x400000) // TODO: Check if this test is needed

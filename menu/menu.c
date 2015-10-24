@@ -8,8 +8,10 @@
 
 /* Static function definitions */
 static int IsRPX(FSDirEntry *dir_entry);
-static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_entry, char *path, int path_index, int is_rpx, int entry_index, int *cur_mem_address);
+static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_entry, char *path, int path_index, int is_rpx, int entry_index);
 static void CreateGameSaveDir(FSClient *pClient, FSCmdBlock *pCmd, const char *dir_entry, char* mount_path);
+static void GenerateMemoryAreasTable();
+static void AddMemoryArea(int start, int end, int cur_index);
 
 /* Entry point */
 int _start(int argc, char *argv[]) {
@@ -30,6 +32,11 @@ int _start(int argc, char *argv[]) {
     OSDynLoad_Acquire("sysapp.rpl", &sysapp_handle);
     void(*_SYSLaunchTitleByPathFromLauncher)(const char* path, int len, int zero) = 0;
     OSDynLoad_FindExport(sysapp_handle, 0, "_SYSLaunchTitleByPathFromLauncher", &_SYSLaunchTitleByPathFromLauncher);
+
+    /* ****************************************************************** */
+    /*                 Get SYSRelaunchTitle pointer                       */
+    /* ****************************************************************** */
+    GenerateMemoryAreasTable();
 
     /* ****************************************************************** */
     /*                              Init Memory                           */
@@ -205,7 +212,6 @@ int _start(int argc, char *argv[]) {
                         FSDirEntry dir_entry;
                         int is_okay = 0;
                         int cur_rpl = 0;
-                        int cur_mem_address = (int)MEM_BASE;
                         while (FSReadDir(pClient, pCmd, game_dh, &dir_entry, FS_RET_ALL_ERROR) == FS_STATUS_OK)
                         {
                             // Check if it is an rpx or rpl and copy it
@@ -215,13 +221,13 @@ int _start(int argc, char *argv[]) {
 
                             if (is_rpx)
                             {
-                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, path_index, 1, 0, &cur_mem_address);
+                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, path_index, 1, 0);
                                 CreateGameSaveDir(pClient, pCmd, game_dir[game_sel], mount_path);
                             }
                             else
                             {
                                 cur_rpl++;
-                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, path_index, 0, cur_rpl, &cur_mem_address);
+                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, path_index, 0, cur_rpl);
                             }
                             if (is_okay == 0)
                                 break;
@@ -230,9 +236,9 @@ int _start(int argc, char *argv[]) {
                         // Save the number of rpx/rpl
                         *(volatile unsigned int*)(RPX_RPL_ENTRY_COUNT) = 1 + cur_rpl;
 
-						// copy the game name to a place we know for later
-						memcpy(GAME_DIR_NAME, game_dir[game_sel], len+1);
-						DCFlushRange(GAME_DIR_NAME, len+1);
+                        // copy the game name to a place we know for later
+                        memcpy(GAME_DIR_NAME, game_dir[game_sel], len+1);
+                        DCFlushRange(GAME_DIR_NAME, len+1);
 
                         // Set ready to quit menu
                         ready = is_okay;
@@ -306,7 +312,7 @@ static int IsRPX(FSDirEntry *dir_entry)
 }
 
 /* Copy_RPX_RPL */
-static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_entry, char *path, int path_index, int is_rpx, int entry_index, int *cur_mem_address)
+static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_entry, char *path, int path_index, int is_rpx, int entry_index)
 {
     // Open rpl file
     int fd = 0;
@@ -329,17 +335,19 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
     path_index += len;
     path_game[path_index++] = '\0';
 
+    // For RPLs :
     if(!is_rpx)
     {
         // fill rpx/rpl entry
         s_rpx_rpl rpx_rpl_data;
-		if(len > sizeof(rpx_rpl_data.name)-1) {
-			len = sizeof(rpx_rpl_data.name)-1;
-		}
+        if(len > sizeof(rpx_rpl_data.name)-1) {
+            len = sizeof(rpx_rpl_data.name)-1;
+        }
 
         memset(&rpx_rpl_data, 0, sizeof(s_rpx_rpl));
-        rpx_rpl_data.address = (int)MEM_BASE;
+        rpx_rpl_data.area = (s_mem_area*)(MEM_AREA_ARRAY);
         rpx_rpl_data.size = 0;
+        rpx_rpl_data.offset = 0;
         memcpy(rpx_rpl_data.name, dir_entry->name, len);
 
         // copy rpx/rpl entry
@@ -350,6 +358,7 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
         return 1;
     }
 
+    // For RPX : load file from sdcard and fill memory with the rpx data
     if (FSOpenFile(pClient, pCmd, path_game, buf_mode, &fd, FS_RET_ALL_ERROR) == FS_STATUS_OK)
     {
         int cur_size = 0;
@@ -358,46 +367,59 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
         // malloc mem for read file
         char* data = (char*)malloc(0x1000);
 
+        // Get current memory area limits
+        s_mem_area* mem_area    = (s_mem_area*)(MEM_AREA_ARRAY);
+        int mem_area_addr_start = mem_area->address;
+        int mem_area_addr_end   = mem_area->address + mem_area->size;
+        int mem_area_offset     = 0;
+
         // Copy rpl in memory : 22 MB max
         while ((ret = FSReadFile(pClient, pCmd, data, 0x1, 0x1000, fd, 0, FS_RET_ALL_ERROR)) > 0)
         {
             // Copy in memory and save offset
             for (int j = 0; j < ret; j++)
-                *(volatile unsigned char*)(*cur_mem_address + cur_size + j) = data[j];
+            {
+                if ((mem_area_addr_start + mem_area_offset) >= mem_area_addr_end)
+                {
+                    // Set next memory area
+                    mem_area            = mem_area->next;
+                    mem_area_addr_start = mem_area->address;
+                    mem_area_addr_end   = mem_area->address + mem_area->size;
+                    mem_area_offset     = 0;
+                }
+                *(volatile unsigned char*)(mem_area_addr_start + mem_area_offset) = data[j];
+                mem_area_offset += 1;
+            }
             cur_size += ret;
         }
 
         // fill rpx/rpl entry
         s_rpx_rpl rpx_rpl_data;
-		if(len > sizeof(rpx_rpl_data.name)-1) {
-			len = sizeof(rpx_rpl_data.name)-1;
-		}
+        if(len > sizeof(rpx_rpl_data.name)-1) {
+            len = sizeof(rpx_rpl_data.name)-1;
+        }
 
+        // set rpx/rpl params : address, size and name
         memset(&rpx_rpl_data, 0, sizeof(s_rpx_rpl));
-        rpx_rpl_data.address = (int)MEM_BASE;
-        rpx_rpl_data.size = cur_size;
+        rpx_rpl_data.area   = (s_mem_area*)(MEM_AREA_ARRAY);
+        rpx_rpl_data.offset = 0;
+        rpx_rpl_data.size   = cur_size;
         memcpy(rpx_rpl_data.name, dir_entry->name, len);
 
         // copy rpx/rpl entry
         memcpy(RPX_RPL_ARRAY + entry_index * sizeof(s_rpx_rpl), &rpx_rpl_data, sizeof(s_rpx_rpl));
 
-        // update current mem address
-        *(volatile unsigned int *)cur_mem_address = *cur_mem_address + cur_size + 4;
+        // Set rpx name (not really needed anymore)
+        uRpxName rpx;
+        rpx.name[0] = dir_entry->name[0];
+        rpx.name[1] = dir_entry->name[1];
+        rpx.name[2] = dir_entry->name[2];
+        rpx.name[3] = dir_entry->name[3];
+        rpx.name[4] = 0;
 
-        // if rpx, set pending rpx name
-        if (is_rpx)
-        {
-            // Get rpx name, always 4 characters !!!
-            uRpxName rpx;
-            rpx.name[0] = dir_entry->name[0];
-            rpx.name[1] = dir_entry->name[1];
-            rpx.name[2] = dir_entry->name[2];
-            rpx.name[3] = dir_entry->name[3];
-            rpx.name[4] = 0;
-
-            *(volatile unsigned int*)(RPX_NAME_PENDING) = rpx.name_full;
-            *(volatile unsigned int*)(RPX_NAME) = 0;
-        }
+        // Set pending rpx name
+        *(volatile unsigned int*)(RPX_NAME_PENDING) = rpx.name_full;
+        *(volatile unsigned int*)(RPX_NAME) = 0;
 
         // close file and free memory
         FSCloseFile(pClient, pCmd, fd, FS_RET_NO_ERROR);
@@ -486,4 +508,107 @@ static void CreateGameSaveDir(FSClient *pClient, FSCmdBlock *pCmd, const char *g
    }
 
    free(path_save);
+}
+
+/* Create memory areas arrays */
+static void GenerateMemoryAreasTable()
+{
+    int mem_vals[][2] = 
+    {
+        // TODO: Check which of those areas are usable
+//        {0xB8000000 + 0x000DCC9C, 0xB8000000 + 0x00174F80}, // 608 kB
+//        {0xB8000000 + 0x00180B60, 0xB8000000 + 0x001C0A00}, // 255 kB
+//        {0xB8000000 + 0x001ECE9C, 0xB8000000 + 0x00208CC0}, // 111 kB
+//        {0xB8000000 + 0x00234180, 0xB8000000 + 0x0024B444}, // 92 kB
+//        {0xB8000000 + 0x0024D8C0, 0xB8000000 + 0x0028D884}, // 255 kB
+//        {0xB8000000 + 0x003A745C, 0xB8000000 + 0x004D2B68}, // 1197 kB
+//        {0xB8000000 + 0x004D77B0, 0xB8000000 + 0x00502200}, // 170 kB
+//        {0xB8000000 + 0x005B3A88, 0xB8000000 + 0x005C6870}, // 75 kB
+//        {0xB8000000 + 0x0061F3E4, 0xB8000000 + 0x00632B04}, // 77 kB
+//        {0xB8000000 + 0x00639790, 0xB8000000 + 0x00649BC4}, // 65 kB
+//        {0xB8000000 + 0x00691490, 0xB8000000 + 0x006B3CA4}, // 138 kB
+//        {0xB8000000 + 0x006D7BCC, 0xB8000000 + 0x006EEB84}, // 91 kB
+//        {0xB8000000 + 0x00704E44, 0xB8000000 + 0x0071E3C4}, // 101 kB
+//        {0xB8000000 + 0x0073B684, 0xB8000000 + 0x0074C184}, // 66 kB
+//        {0xB8000000 + 0x00751354, 0xB8000000 + 0x00769784}, // 97 kB
+//        {0xB8000000 + 0x008627DC, 0xB8000000 + 0x00872904}, // 64 kB
+//        {0xB8000000 + 0x008C1E98, 0xB8000000 + 0x008EB0A0}, // 164 kB
+//        {0xB8000000 + 0x008EEC30, 0xB8000000 + 0x00B06E98}, // 2144 kB
+//        {0xB8000000 + 0x00B06EC4, 0xB8000000 + 0x00B930C4}, // 560 kB
+//        {0xB8000000 + 0x00BA1868, 0xB8000000 + 0x00BC22A4}, // 130 kB
+//        {0xB8000000 + 0x00BC48F8, 0xB8000000 + 0x00BDEC84}, // 104 kB
+//        {0xB8000000 + 0x00BE3DC0, 0xB8000000 + 0x00C02284}, // 121 kB
+//        {0xB8000000 + 0x00C02FC8, 0xB8000000 + 0x00C19924}, // 90 kB
+//        {0xB8000000 + 0x00C2D35C, 0xB8000000 + 0x00C3DDC4}, // 66 kB
+//        {0xB8000000 + 0x00C48654, 0xB8000000 + 0x00C6E2E4}, // 151 kB
+//        {0xB8000000 + 0x00D04E04, 0xB8000000 + 0x00D36938}, // 198 kB
+//        {0xB8000000 + 0x00DC88AC, 0xB8000000 + 0x00E14288}, // 302 kB
+//        {0xB8000000 + 0x00E21ED4, 0xB8000000 + 0x00EC8298}, // 664 kB
+//        {0xB8000000 + 0x00EDDC7C, 0xB8000000 + 0x00F7C2A8}, // 633 kB
+//        {0xB8000000 + 0x00F89EF4, 0xB8000000 + 0x010302B8}, // 664 kB
+//        {0xB8000000 + 0x01030800, 0xB8000000 + 0x013F69A0}, // 3864 kB
+//        {0xB8000000 + 0x016CE000, 0xB8000000 + 0x016E0AA0}, // 74 kB
+//        {0xB8000000 + 0x0170200C, 0xB8000000 + 0x018B9C58}, // 1759 kB
+//        {0xB8000000 + 0x01F17658, 0xB8000000 + 0x01F6765C}, // 320 kB
+//        {0xB8000000 + 0x01F6779C, 0xB8000000 + 0x01FB77A0}, // 320 kB
+//        {0xB8000000 + 0x01FB78E0, 0xB8000000 + 0x020078E4}, // 320 kB
+//        {0xB8000000 + 0x02007A24, 0xB8000000 + 0x02057A28}, // 320 kB
+//        {0xB8000000 + 0x02057B68, 0xB8000000 + 0x021B957C}, // 1414 kB
+//        {0xB8000000 + 0x02891528, 0xB8000000 + 0x028C8A28}, // 221 kB
+//        {0xB8000000 + 0x02BBCC4C, 0xB8000000 + 0x02CB958C}, // 1010 kB
+//        {0xB8000000 + 0x0378D45C, 0xB8000000 + 0x03855464}, // 800 kB
+//        {0xB8000000 + 0x0387800C, 0xB8000000 + 0x03944938}, // 818 kB
+//        {0xB8000000 + 0x03944A08, 0xB8000000 + 0x03956E0C}, // 73 kB
+//        {0xB8000000 + 0x04A944A4, 0xB8000000 + 0x04ABAAC0}, // 153 kB
+        {0xB8000000 + 0x04ADE370, 0xB8000000 + 0x0520EAB8}, // 7361 kB      // ok
+        {0xB8000000 + 0x053B966C, 0xB8000000 + 0x058943C4}, // 4971 kB      // ok
+//        {0xB8000000 + 0x058AD3D8, 0xB8000000 + 0x06000000}, // 7499 kB
+//        {0xB8000000 + 0x0638D320, 0xB8000000 + 0x063B0280}, // 139 kB
+//        {0xB8000000 + 0x063C39E0, 0xB8000000 + 0x063E62C0}, // 138 kB
+//        {0xB8000000 + 0x063F52A0, 0xB8000000 + 0x06414A80}, // 125 kB
+//        {0xB8000000 + 0x06422810, 0xB8000000 + 0x0644B2C0}, // 162 kB
+//        {0xB8000000 + 0x064E48D0, 0xB8000000 + 0x06503EC0}, // 125 kB
+//        {0xB8000000 + 0x0650E360, 0xB8000000 + 0x06537080}, // 163 kB
+//        {0xB8000000 + 0x0653A460, 0xB8000000 + 0x0655C300}, // 135 kB
+//        {0xB8000000 + 0x0658AA40, 0xB8000000 + 0x065BC4C0}, // 198 kB       // ok
+//        {0xB8000000 + 0x065E51A0, 0xB8000000 + 0x06608E80}, // 143 kB       // ok
+        {0xB8000000 + 0x06609ABC, 0xB8000000 + 0x07F82C00}, // 26084 kB     // ok
+
+//        {0xC0000000 + 0x000DCC9C, 0xC0000000 + 0x00180A00}, // 655 kB
+//        {0xC0000000 + 0x00180B60, 0xC0000000 + 0x001C0A00}, // 255 kB
+//        {0xC0000000 + 0x001F5EF0, 0xC0000000 + 0x00208CC0}, // 75 kB
+//        {0xC0000000 + 0x00234180, 0xC0000000 + 0x0024B444}, // 92 kB
+//        {0xC0000000 + 0x0024D8C0, 0xC0000000 + 0x0028D884}, // 255 kB
+//        {0xC0000000 + 0x003A745C, 0xC0000000 + 0x004D2B68}, // 1197 kB
+//        {0xC0000000 + 0x006D3334, 0xC0000000 + 0x00772204}, // 635 kB
+//        {0xC0000000 + 0x00789C60, 0xC0000000 + 0x007C6000}, // 240 kB
+        {0xC0000000 + 0x00800000, 0xC0000000 + 0x01E20000}, // 22876 kB     // ok
+        
+        {0, 0}
+    }; // total : 66mB + 25mB
+
+    // Fill entries
+    int i = 0;
+    while (mem_vals[i][0])
+    {
+        AddMemoryArea(mem_vals[i][0], mem_vals[i][1], i);
+        i++;
+    }
+}
+
+static void AddMemoryArea(int start, int end, int cur_index)
+{
+    // Create and copy new memory area
+    s_mem_area mem_area;
+    mem_area.address = start;
+    mem_area.size    = end - start;
+
+    memcpy(MEM_AREA_ARRAY + cur_index * sizeof(s_mem_area), &mem_area, sizeof(s_mem_area));
+
+    // Fill pointer to this area in the previous area
+    if (cur_index > 0)
+    {
+        s_mem_area* mem_area_previous = (s_mem_area*)(MEM_AREA_ARRAY + (cur_index - 1) * sizeof(s_mem_area));
+        mem_area_previous->next = (s_mem_area*)(MEM_AREA_ARRAY + cur_index * sizeof(s_mem_area));
+    }
 }

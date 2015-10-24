@@ -686,17 +686,36 @@ static int CheckAndLoadRPL(const char *rpl) {
                 // malloc mem for read file
                 unsigned char* dataBuf = (unsigned char*)MEMAllocFromDefaultHeapEx(0x1000, 0x40);
                 int ret;
-                // Copy rpl in memory : 22 MB max
+                
+                // Get current memory area
+                s_mem_area* mem_area    = (s_mem_area*)(MEM_AREA_ARRAY);
+                int mem_area_addr_start = mem_area->address;
+                int mem_area_addr_end   = mem_area->address + mem_area->size;
+                int mem_area_offset     = 0;
+
+                // Copy rpl in memory
                 while ((ret = FSReadFile(pClient, pCmd, dataBuf, 0x1, 0x1000, fd, 0, FS_RET_ALL_ERROR)) > 0)
                 {
                     // Copy in memory and save offset
                     for (int j = 0; j < ret; j++)
-                        *(volatile unsigned char*)(((unsigned int)MEM_BASE) + rpl_struct->size + j) = dataBuf[j];
+                    {
+                        if ((mem_area_addr_start + mem_area_offset) >= mem_area_addr_end)
+                        {
+                            // Set next memory area
+                            mem_area            = mem_area->next;
+                            mem_area_addr_start = mem_area->address;
+                            mem_area_addr_end   = mem_area->address + mem_area->size;
+                            mem_area_offset     = 0;
+                        }
+                        *(volatile unsigned char*)(mem_area_addr_start + mem_area_offset) = dataBuf[j];
+                        mem_area_offset += 1;
+                    }
                     rpl_struct->size += ret;
                 }
-                // reset offset
+
+                // Fill rpl entry
+                rpl_struct->area = (s_mem_area*)(MEM_AREA_ARRAY);
                 rpl_struct->offset = 0;
-                rpl_struct->address = (int)MEM_BASE;
 
                 // flush memory
                 // DCFlushRange((void*)rpl_struct, sizeof(s_rpx_rpl));
@@ -705,7 +724,7 @@ static int CheckAndLoadRPL(const char *rpl) {
                 if ((int)bss_ptr != 0x0a000000)
                 {
                     char buffer[200];
-                    __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) file loaded 0x%08X %i", rpl, rpl_struct->address, rpl_struct->size);
+                    __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) file loaded 0x%08X %i", rpl, rpl_struct->area->address, rpl_struct->size);
                     log_string(bss.global_sock, buffer, BYTE_LOG_STR);
                 }
 
