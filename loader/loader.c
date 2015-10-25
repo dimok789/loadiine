@@ -76,7 +76,7 @@ void LOADER_Start(void)
     if (*(volatile unsigned int *)0xEFE00000 != RPX_CHECK_NAME)
     {
         *(volatile unsigned int *)(RPX_NAME) = 0;
-        
+
         #if (IS_USING_MII_MAKER == 1)
             *(volatile unsigned int*)(GAME_LAUNCHED) = 0;
         #endif
@@ -401,17 +401,42 @@ void LiLoadRPLBasics_in_1_load(void)
             // If rpx/rpl size is less than 0x400000 bytes, we need to stop here
             if (is_rpx)
             {
+                // these memories are still different in their values, tried to overwrite them but i think its the wrong place yet
+                //*(volatile unsigned int *)(0xEFE01010) = 0x03FFCFC0;
+                //*(volatile unsigned int *)(0xEFE01014) = 0x04000000;
+                //*(volatile unsigned int *)(0xEFE054F4) = 0x0003CD9D;
+                //*(volatile unsigned int *)(0xEFE05534) = 0x01014EF3;
+                //*(volatile unsigned int *)(0xEFE05548) = 0x0000093D;
+                //*(volatile unsigned int *)(0xEFE06580) = 0x00000031;
+                //*(volatile unsigned int *)(0xEFE065A8) = 0x31000000;
+                //*(volatile unsigned int *)(0xEFE06664) = 0x20310A00;
+                //*(volatile unsigned int *)(0xEFE06774) = 0x00000001;
+                //*(volatile unsigned int *)(0xEFE096F8) = 0x00000014;
+                //*(volatile unsigned int *)(0xEFE096FC) = 0x000618E5;
+                //*(volatile unsigned int *)(0xEFE0A414) = 0x04000000;
+                //*(volatile unsigned int *)(0xEFE0A418) = 0x3BFA0000;
+                //*(volatile unsigned int *)(0xEFE0A41C) = 0x00000001;
+                //*(volatile unsigned int *)(0xEFE06774) = 0xEFE0BA00;
+                //*(volatile unsigned int *)(0xEFE1AD28) = 0x00000001;
+
                 // Remaining size to load is in one (or more) of those addresses
                 if (*(volatile unsigned int *)(MEM_SIZE) == 0)
                 {
-                    //if (*(volatile unsigned int *)(0xEFE0552C) == 0x00400000) *(volatile unsigned int *)(0xEFE0552C) = size;
-                    //if (*(volatile unsigned int *)(0xEFE05588) == 0x00400000) *(volatile unsigned int *)(0xEFE05588) = size;
-                    //if (*(volatile unsigned int *)(0xEFE05790) == 0x00400000) *(volatile unsigned int *)(0xEFE05790) = size;
                     *(volatile unsigned int *)(0xEFE05790) = size;
-                    //if (*(volatile unsigned int *)(0xEFE055B8) == 0x00400000) *(volatile unsigned int *)(0xEFE055B8) = size;
-                    //if (*(volatile unsigned int *)(0xEFE1CF84) == 0x00400000) *(volatile unsigned int *)(0xEFE1CF84) = size;
-                    //if (*(volatile unsigned int *)(0xEFE1D820) == 0x00400000) *(volatile unsigned int *)(0xEFE1D820) = size;
-                    //if (*(volatile unsigned int *)(0xEFE0576C) == 0x00400000) *(volatile unsigned int *)(0xEFE0576C) = size;
+                    *(volatile unsigned int *)(0xEFE054EC) = size;
+                    *(volatile unsigned int *)(0xEFE05580) = size;
+                    *(volatile unsigned int *)(0xEFE19D0C) = size;
+                    *(volatile unsigned int *)(0xEFE1CF84) = size;
+                    *(volatile unsigned int *)(0xEFE1D820) = size;
+                }
+                else {
+                    // set address to maximum size to signalize there is more data to come
+                    *(volatile unsigned int *)(0xEFE05790) = 0x400000;
+                    *(volatile unsigned int *)(0xEFE054EC) = 0x400000;
+                    *(volatile unsigned int *)(0xEFE05580) = 0x400000;
+                    *(volatile unsigned int *)(0xEFE19D0C) = 0x400000;
+                    *(volatile unsigned int *)(0xEFE1CF84) = 0x400000;
+                    *(volatile unsigned int *)(0xEFE1D820) = 0x400000;
                 }
 
                 // Set rpx name as active for FS to replace file from sd card
@@ -419,6 +444,7 @@ void LiLoadRPLBasics_in_1_load(void)
             }
             else
             {
+                // TODO: check those for mii maker, probably needs change
                 // set remaining size
                 *(volatile unsigned int *)(0xEFE0647C) = size;
                 *(volatile unsigned int *)(0xEFE06510) = size;
@@ -444,40 +470,40 @@ void LiLoadRPLBasics_in_1_load(void)
  * - instruction address = 0x0100CDC0
  * - original instruction = 0x7FC3F378 : "mr r3, r30"
  */
-void LiSetupOneRPL_after(void)
-{
-    // Save registers
-    int r30;
-    asm volatile("mr %0, 30\n"
-        :"=r"(r30)
-        :
-        :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
-    );
-
-    // Do our stuff
-#if (IS_USING_MII_MAKER == 0)
-    if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME)
-#else
-    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (*(volatile unsigned int*)(GAME_LAUNCHED) == 1))
-#endif
-    {
-        //*(volatile unsigned int *)(IS_ACTIVE_ADDR) = 0; // Set as inactive
-
-        // Restore original instruction after LiWaitOneChunk (in GetNextBounce) // TODO: check if it is needed
-//        *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK3_AFTER1_ADDR)) = LI_WAIT_ONE_CHUNK3_AFTER1_ORIG_INSTR;
-//        *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK3_AFTER2_ADDR)) = LI_WAIT_ONE_CHUNK3_AFTER2_ORIG_INSTR;
+//void LiSetupOneRPL_after(void)
+//{
+//    // Save registers
+//    int r30;
+//    asm volatile("mr %0, 30\n"
+//        :"=r"(r30)
+//        :
+//        :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
+//    );
 //
-//        FlushBlock(LI_WAIT_ONE_CHUNK3_AFTER1_ADDR);
-//        FlushBlock(LI_WAIT_ONE_CHUNK3_AFTER2_ADDR);
-    }
-
-    // Return properly
-    asm volatile("mr 3, %0\n"
-        :
-        :"r"(r30)
-        );
-    return;
-}
+//    // Do our stuff
+//#if (IS_USING_MII_MAKER == 0)
+//    if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME)
+//#else
+//    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (*(volatile unsigned int*)(GAME_LAUNCHED) == 1))
+//#endif
+//    {
+//        //*(volatile unsigned int *)(IS_ACTIVE_ADDR) = 0; // Set as inactive
+//
+//        // Restore original instruction after LiWaitOneChunk (in GetNextBounce) // TODO: check if it is needed
+////        *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK3_AFTER1_ADDR)) = LI_WAIT_ONE_CHUNK3_AFTER1_ORIG_INSTR;
+////        *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK3_AFTER2_ADDR)) = LI_WAIT_ONE_CHUNK3_AFTER2_ORIG_INSTR;
+////
+////        FlushBlock(LI_WAIT_ONE_CHUNK3_AFTER1_ADDR);
+////        FlushBlock(LI_WAIT_ONE_CHUNK3_AFTER2_ADDR);
+//    }
+//
+//    // Return properly
+//    asm volatile("mr 3, %0\n"
+//        :
+//        :"r"(r30)
+//        );
+//    return;
+//}
 
 
 //int GetNextBounce(unsigned char *buffer)
@@ -731,9 +757,9 @@ void LiRefillBounceBufferForReading_af_getbounce(void)
         // Replace remaining size in loader memory
         //if (size != 0x400000) // TODO: Check if this test is needed
         {
-            *(volatile unsigned int *)(0xEFE05790) = size;
-            //*(volatile unsigned int *)(0xEFE05588) = size;
-            //*(volatile unsigned int *)(0xEFE1D820) = size;
+            //*(volatile unsigned int *)(0xEFE0552C) = size;  // this is actually 0x001A001A, don't think its correct to overwrite this
+            //*(volatile unsigned int *)(0xEFE05588) = size;  // this is a pointer to 0xEFE055EC, so better not overwrite it
+            *(volatile unsigned int *)(0xEFE1D820) = size;    // this one has 0x000C3740 on smash bros, doesn't look like remaining size?
         }
 
         // Bounce flag OFF
@@ -761,7 +787,7 @@ struct magic_t {
     MAKE_MAGIC(LOADER_Prep,                                 0x3f00fff9),
     MAKE_MAGIC(LiLoadRPLBasics_bef_LiWaitOneChunk,          0x809d0010),
     MAKE_MAGIC(LiLoadRPLBasics_in_1_load,                   0x7EE3BB78),
-    MAKE_MAGIC(LiSetupOneRPL_after,                         0x7FC3F378),
+//    MAKE_MAGIC(LiSetupOneRPL_after,                         0x7FC3F378),   // this function does nothing anymore, don't need to replace
 //    MAKE_MAGIC(GetNextBounce,                               0x7C0802A6),
 //    MAKE_MAGIC(sLiRefillBounceBufferForReading,             0x7C0802A6),
     MAKE_MAGIC(GetNextBounce_1,                             0x7c0a2040),
