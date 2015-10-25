@@ -404,12 +404,14 @@ void LiLoadRPLBasics_in_1_load(void)
                 // Remaining size to load is in one (or more) of those addresses
                 if (*(volatile unsigned int *)(MEM_SIZE) == 0)
                 {
-                    if (*(volatile unsigned int *)(0xEFE0552C) == 0x00400000) *(volatile unsigned int *)(0xEFE0552C) = size;
-                    if (*(volatile unsigned int *)(0xEFE05588) == 0x00400000) *(volatile unsigned int *)(0xEFE05588) = size;
-                    if (*(volatile unsigned int *)(0xEFE05790) == 0x00400000) *(volatile unsigned int *)(0xEFE05790) = size;
-                    if (*(volatile unsigned int *)(0xEFE055B8) == 0x00400000) *(volatile unsigned int *)(0xEFE055B8) = size;
-                    if (*(volatile unsigned int *)(0xEFE1CF84) == 0x00400000) *(volatile unsigned int *)(0xEFE1CF84) = size;
-                    if (*(volatile unsigned int *)(0xEFE1D820) == 0x00400000) *(volatile unsigned int *)(0xEFE1D820) = size;
+                    //if (*(volatile unsigned int *)(0xEFE0552C) == 0x00400000) *(volatile unsigned int *)(0xEFE0552C) = size;
+                    //if (*(volatile unsigned int *)(0xEFE05588) == 0x00400000) *(volatile unsigned int *)(0xEFE05588) = size;
+                    //if (*(volatile unsigned int *)(0xEFE05790) == 0x00400000) *(volatile unsigned int *)(0xEFE05790) = size;
+                    *(volatile unsigned int *)(0xEFE05790) = size;
+                    //if (*(volatile unsigned int *)(0xEFE055B8) == 0x00400000) *(volatile unsigned int *)(0xEFE055B8) = size;
+                    //if (*(volatile unsigned int *)(0xEFE1CF84) == 0x00400000) *(volatile unsigned int *)(0xEFE1CF84) = size;
+                    //if (*(volatile unsigned int *)(0xEFE1D820) == 0x00400000) *(volatile unsigned int *)(0xEFE1D820) = size;
+                    //if (*(volatile unsigned int *)(0xEFE0576C) == 0x00400000) *(volatile unsigned int *)(0xEFE0576C) = size;
                 }
 
                 // Set rpx name as active for FS to replace file from sd card
@@ -727,11 +729,11 @@ void LiRefillBounceBufferForReading_af_getbounce(void)
         *(volatile unsigned int*)(MEM_PART)   = (*(volatile unsigned int *)(MEM_PART) + 1) % 2;
 
         // Replace remaining size in loader memory
-        if (size != 0x400000) // TODO: Check if this test is needed
+        //if (size != 0x400000) // TODO: Check if this test is needed
         {
-            *(volatile unsigned int *)(0xEFE0552C) = size;
-            *(volatile unsigned int *)(0xEFE05588) = size;
-            *(volatile unsigned int *)(0xEFE1D820) = size;
+            *(volatile unsigned int *)(0xEFE05790) = size;
+            //*(volatile unsigned int *)(0xEFE05588) = size;
+            //*(volatile unsigned int *)(0xEFE1D820) = size;
         }
 
         // Bounce flag OFF
