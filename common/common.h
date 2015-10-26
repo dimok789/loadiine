@@ -20,6 +20,8 @@
 #define RPL_REPLACE_ADDR        (DATA_ADDR - 0x0C)  // is it a new rpl to add
 #define RPL_ENTRY_INDEX_ADDR    (DATA_ADDR - 0x10)  // entry index of the rpx in our table
 #define IS_LOADING_RPX_ADDR     (DATA_ADDR - 0x14)  // used to know if we are currently loading a rpx or a rpl
+#define RPX_SIZE_POINTER_1      (DATA_ADDR - 0x18)
+#define RPX_SIZE_POINTER_2      (DATA_ADDR - 0x1C)
 
 /* RPX Address : where the rpx is copied or retrieve, depends if we dump or replace */
 /* Note : from phys 0x30789C5D to 0x31E20000, memory seems empty (space reserved for root.rpx) which let us approximatly 22.5mB of memory free to put the rpx and additional rpls */

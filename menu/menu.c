@@ -32,7 +32,7 @@ int _start(int argc, char *argv[]) {
         return main(argc, argv);
     }
 #endif
-    
+
     /* ****************************************************************** */
     /*           Get _SYSLaunchTitleByPathFromLauncher pointer            */
     /* ****************************************************************** */
@@ -41,7 +41,7 @@ int _start(int argc, char *argv[]) {
 
     void(*_SYSLaunchTitleByPathFromLauncher)(const char* path, int len, int zero) = 0;
     OSDynLoad_FindExport(sysapp_handle, 0, "_SYSLaunchTitleByPathFromLauncher", &_SYSLaunchTitleByPathFromLauncher);
-    
+
     int(*SYSRelaunchTitle)(uint argc, char* argv) = 0;
     OSDynLoad_FindExport(sysapp_handle, 0, "SYSRelaunchTitle", &SYSRelaunchTitle);
 
@@ -608,8 +608,8 @@ static void GenerateMemoryAreasTable()
 //        {0xC0000000 + 0x006D3334, 0xC0000000 + 0x00772204}, // 635 kB
 //        {0xC0000000 + 0x00789C60, 0xC0000000 + 0x007C6000}, // 240 kB
 //        {0xC0000000 + 0x00800000, 0xC0000000 + 0x01E20000}, // 22876 kB     // ok
-        
-        
+
+
         {0xB8000000 + 0x06609ABC, 0xB8000000 + 0x07F82C00}, // 26084 kB     // ok
         {0xC0000000 + 0x00800000, 0xC0000000 + 0x01E20000}, // 22876 kB     // ok
 
