@@ -892,6 +892,169 @@ DECL(int, FSWriteFileWithPos_log, void *pClient, void *pCmd, const void *source,
     log_byte_for_client(pClient, BYTE_WRITE_FILE_WITH_POS);
     return real_FSWriteFileWithPos_log(pClient, pCmd, source, size, count, pos, fd, flag, error);
 }
+
+DECL(int, FSGetVolumeState_log, void *pClient) {
+    int result = real_FSGetVolumeState_log(pClient);
+
+    if ((int)bss_ptr != 0x0a000000)
+    {
+        if (result > 1)
+        {
+            int error = real_FSGetLastError_log(pClient);
+
+            char buffer[200];
+            __os_snprintf(buffer, sizeof(buffer), "FSGetVolumeState: %i, last error = %i", result, error);
+            log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+        }
+    }
+
+    return result;
+}
+
+DECL(int, FSFlushQuota_log, void *pClient, void *pCmd, char* path, int error) {
+    int client = GetCurClient(pClient, pCmd);
+    if (client != -1) {
+        // log
+        //log_string(bss.socket_fs[client], path, BYTE_REMOVE);
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "FSFlushQuota: %s", path);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+
+        // change path if it is a save folder
+        if (is_savefile(path)) {
+            int len = strlen(path);
+            int len_base = (strlen(bss.save_base) + 8);
+            char new_path[len + len_base + 1];
+            compute_new_path(new_path, path, len, 1);
+
+            // log new path
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+
+            return real_FSFlushQuota_log(pClient, pCmd, new_path, error);
+        }
+    }
+    return real_FSFlushQuota_log(pClient, pCmd, path, error);
+}
+DECL(int, FSFlushQuotaAsync_log, void *pClient, void *pCmd, char *path, int error, FSAsyncParams *asyncParams) {
+    int client = GetCurClient(pClient, pCmd);
+    if (client != -1) {
+        // log
+        //log_string(bss.socket_fs[client], path, BYTE_REMOVE);
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "FSFlushQuotaAsync: %s", path);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+
+        // change path if it is a save folder
+        if (is_savefile(path)) {
+            int len = strlen(path);
+            int len_base = (strlen(bss.save_base) + 8);
+            char new_path[len + len_base + 1];
+            compute_new_path(new_path, path, len, 1);
+
+            // log new path
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+
+            return real_FSFlushQuotaAsync_log(pClient, pCmd, new_path, error, asyncParams);
+        }
+    }
+    return real_FSFlushQuotaAsync_log(pClient, pCmd, path, error, asyncParams);
+}
+
+DECL(int, FSGetFreeSpaceSize_log, void *pClient, void *pCmd, char *path, uint64_t *returnedFreeSize, int error) {
+    int client = GetCurClient(pClient, pCmd);
+    if (client != -1) {
+        // log
+        //log_string(bss.socket_fs[client], path, BYTE_REMOVE);
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "FSGetFreeSpaceSize: %s", path);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+
+        // change path if it is a save folder
+        if (is_savefile(path)) {
+            int len = strlen(path);
+            int len_base = (strlen(bss.save_base) + 8);
+            char new_path[len + len_base + 1];
+            compute_new_path(new_path, path, len, 1);
+
+            // log new path
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+
+            return real_FSGetFreeSpaceSize_log(pClient, pCmd, new_path, returnedFreeSize, error);
+        }
+    }
+    return real_FSGetFreeSpaceSize_log(pClient, pCmd, path, returnedFreeSize, error);
+}
+DECL(int, FSGetFreeSpaceSizeAsync_log, void *pClient, void *pCmd, char *path, uint64_t *returnedFreeSize, int error, FSAsyncParams *asyncParams) {
+    int client = GetCurClient(pClient, pCmd);
+    if (client != -1) {
+        // log
+        //log_string(bss.socket_fs[client], path, BYTE_REMOVE);
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "FSGetFreeSpaceSizeAsync: %s", path);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+
+        // change path if it is a save folder
+        if (is_savefile(path)) {
+            int len = strlen(path);
+            int len_base = (strlen(bss.save_base) + 8);
+            char new_path[len + len_base + 1];
+            compute_new_path(new_path, path, len, 1);
+
+            // log new path
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+
+            return real_FSGetFreeSpaceSizeAsync_log(pClient, pCmd, new_path, returnedFreeSize, error, asyncParams);
+        }
+    }
+    return real_FSGetFreeSpaceSizeAsync_log(pClient, pCmd, path, returnedFreeSize, error, asyncParams);
+}
+DECL(int, FSRollbackQuota_log, void *pClient, void *pCmd, char *path, int error) {
+    int client = GetCurClient(pClient, pCmd);
+    if (client != -1) {
+        // log
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "FSRollbackQuota: %s", path);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+
+        // change path if it is a save folder
+        if (is_savefile(path)) {
+            int len = strlen(path);
+            int len_base = (strlen(bss.save_base) + 8);
+            char new_path[len + len_base + 1];
+            compute_new_path(new_path, path, len, 1);
+
+            // log new path
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+
+            return real_FSRollbackQuota_log(pClient, pCmd, new_path, error);
+        }
+    }
+    return real_FSRollbackQuota_log(pClient, pCmd, path, error);
+}
+DECL(int, FSRollbackQuotaAsync_log, void *pClient, void *pCmd, char *path, int error, FSAsyncParams *asyncParams) {
+    int client = GetCurClient(pClient, pCmd);
+    if (client != -1) {
+        // log
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "FSRollbackQuotaAsync: %s", path);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+
+        // change path if it is a save folder
+        if (is_savefile(path)) {
+            int len = strlen(path);
+            int len_base = (strlen(bss.save_base) + 8);
+            char new_path[len + len_base + 1];
+            compute_new_path(new_path, path, len, 1);
+
+            // log new path
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+
+            return real_FSRollbackQuotaAsync_log(pClient, pCmd, new_path, error, asyncParams);
+        }
+    }
+    return real_FSRollbackQuotaAsync_log(pClient, pCmd, path, error, asyncParams);
+}
+
 #endif
 
 /* *****************************************************************************
@@ -949,5 +1112,13 @@ struct magic_t {
     MAKE_MAGIC(FSTruncateFile_log),
     MAKE_MAGIC(FSWriteFile_log),
     MAKE_MAGIC(FSWriteFileWithPos_log),
+    
+    MAKE_MAGIC(FSGetVolumeState_log),
+    MAKE_MAGIC(FSFlushQuota_log),
+    MAKE_MAGIC(FSFlushQuotaAsync_log),
+    MAKE_MAGIC(FSGetFreeSpaceSize_log),
+    MAKE_MAGIC(FSGetFreeSpaceSizeAsync_log),
+    MAKE_MAGIC(FSRollbackQuota_log),
+    MAKE_MAGIC(FSRollbackQuotaAsync_log),
 #endif
 };

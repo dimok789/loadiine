@@ -76,6 +76,14 @@ PROVIDE(FSTruncateFile_log = 0x0106f3c0);
 PROVIDE(FSWriteFile_log = 0x0106f228);                  
 PROVIDE(FSWriteFileAsync_log = 0x0106aa08);
 PROVIDE(FSWriteFileWithPos_log = 0x0106f2b4);
+PROVIDE(FSGetVolumeState_log = 0x01068e20);
+PROVIDE(FSFlushQuota_log = 0x0106fac8);
+PROVIDE(FSFlushQuotaAsync_log = 0x0106ba4c);
+PROVIDE(FSGetFreeSpaceSize_log = 0x0106fe38);
+PROVIDE(FSGetFreeSpaceSizeAsync_log = 0x0106c008);
+PROVIDE(FSRollbackQuota_log = 0x0106fc48);
+PROVIDE(FSRollbackQuotaAsync_log = 0x0106bb50);
+
 
 /* FS methods for sd card */
 PROVIDE(FSGetMountSource = 0x0106ec24);
