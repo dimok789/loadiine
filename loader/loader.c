@@ -267,6 +267,10 @@ void LiLoadRPLBasics_bef_LiWaitOneChunk(void)
             if (size > 0x400000)
                 size = 0x400000;
             *(volatile unsigned int*)(r3) = size;
+            *(volatile unsigned int*)(0xEFE0560C) = size;
+            *(volatile unsigned int*)(0xEFE05658) = size;
+            *(volatile unsigned int*)(0xEFE05660) = entry->size;
+            *(volatile unsigned int*)(0xEFE0566C) = *(volatile unsigned int *)(MEM_SIZE);
         }
     }
 
@@ -505,7 +509,7 @@ void LiLoadRPLBasics_in_1_load(void)
 //    return;
 //}
 
-
+//
 //int GetNextBounce(unsigned char *buffer)
 //{
 //    int r4 = *(unsigned int *)(&buffer[0x14]);
@@ -574,7 +578,7 @@ void LiLoadRPLBasics_in_1_load(void)
 //
 //    return result;
 //}
-
+//
 /* GetNextBounce_1 **************************************************************
  * - instruction address = 0x0100b728
  * - original instruction = 0x7c0a2040 : "cmplw r10, r4" (instruction is originaly "cmplw r10, r11" but it was patched because of the gcc proploge overwriting r11)
@@ -759,7 +763,12 @@ void LiRefillBounceBufferForReading_af_getbounce(void)
         {
             //*(volatile unsigned int *)(0xEFE0552C) = size;  // this is actually 0x001A001A, don't think its correct to overwrite this
             //*(volatile unsigned int *)(0xEFE05588) = size;  // this is a pointer to 0xEFE055EC, so better not overwrite it
-            *(volatile unsigned int *)(0xEFE1D820) = size;    // this one has 0x000C3740 on smash bros, doesn't look like remaining size?
+            //*(volatile unsigned int *)(0xEFE1D820) = size;    // this one has 0x000C3740 on smash bros, doesn't look like remaining size?
+
+            //*(volatile unsigned int*)(0xEFE0560C) = size;
+            //*(volatile unsigned int*)(0xEFE05658) = size;
+            *(volatile unsigned int*)(0xEFE1D004) = size;
+            *(volatile unsigned int*)(0xEFE1D820) = size;
         }
 
         // Bounce flag OFF

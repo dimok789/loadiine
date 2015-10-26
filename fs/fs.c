@@ -663,10 +663,15 @@ static int LoadRPLToMemory(s_rpx_rpl *rpl_entry)
     FSInitCmdBlock(pCmd);
     FSAddClientEx(pClient, 0, FS_RET_NO_ERROR);
 
+    // set RPL size to 0 to avoid wrong RPL being loaded when opening file fails
+    rpl_entry->size = 0;
+    rpl_entry->offset = 0;
+
     int fd = 0;
     if (real_FSOpenFile(pClient, pCmd, path_rpl, "r", &fd, FS_RET_ALL_ERROR) == FS_STATUS_OK)
     {
         int ret;
+        int rpl_size = 0;
 
         // Get current memory area
         s_mem_area* mem_area    = (s_mem_area*)(MEM_AREA_ARRAY);
@@ -691,12 +696,13 @@ static int LoadRPLToMemory(s_rpx_rpl *rpl_entry)
                 *(volatile unsigned char*)(mem_area_addr_start + mem_area_offset) = dataBuf[j];
                 mem_area_offset += 1;
             }
-            rpl_entry->size += ret;
+            rpl_size += ret;
         }
 
         // Fill rpl entry
         rpl_entry->area = (s_mem_area*)(MEM_AREA_ARRAY);
         rpl_entry->offset = 0;
+        rpl_entry->size = rpl_size;
 
         // flush memory
         // DCFlushRange((void*)rpl_entry, sizeof(s_rpx_rpl));
