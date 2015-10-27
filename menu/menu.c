@@ -629,6 +629,10 @@ static void GenerateMemoryAreasTable()
 
         {0xC0000000 + 0x00800000, 0xC0000000 + 0x01E20000}, // 22876 kB     // ok
         {0xB8000000 + 0x06609ABC, 0xB8000000 + 0x07F82C00}, // 26084 kB     // ok
+        {0xB8000000 + 0x01030800, 0xB8000000 + 0x013F69A0}, // 3864 kB
+        {0xB8000000 + 0x008EEC30, 0xB8000000 + 0x00B06E98}, // 2144 kB
+        {0xB8000000 + 0x053B966C, 0xB8000000 + 0x058943C4}, // 4971 kB
+        {0xB8000000 + 0x04ADE370, 0xB8000000 + 0x0520EAB8}, // 7361 kB 
 
         {0, 0}
     }; // total : 66mB + 25mB
@@ -653,7 +657,7 @@ static void AddMemoryArea(int start, int end, int cur_index)
     // Fill pointer to this area in the previous area
     if (cur_index > 0)
     {
-        mem_area[cur_index - 1].next = mem_area;
+        mem_area[cur_index - 1].next = &mem_area[cur_index];
     }
 }
 
