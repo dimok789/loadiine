@@ -248,9 +248,9 @@ DECL(int, FSInit, void) {
         setup_os_exceptions();
 
         // create game mount path prefix
-        __os_snprintf(bss.mount_base, sizeof(bss.mount_base), "%s%s/%s%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, (char *)GAME_DIR_NAME, CONTENT_PATH);
+        __os_snprintf(bss.mount_base, sizeof(bss.mount_base), "%s%s/%s%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, GAME_DIR_NAME, CONTENT_PATH);
         // create game save path prefix
-        __os_snprintf(bss.save_base, sizeof(bss.save_base), "%s%s/%s", CAFE_OS_SD_PATH, SD_SAVES_PATH, (char *)GAME_DIR_NAME);
+        __os_snprintf(bss.save_base, sizeof(bss.save_base), "%s%s/%s", CAFE_OS_SD_PATH, SD_SAVES_PATH, GAME_DIR_NAME);
 
         fs_connect(&bss.global_sock);
     }
@@ -267,7 +267,7 @@ DECL(int, FSAddClientEx, void *r3, void *r4, void *r5) {
     int res = real_FSAddClientEx(r3, r4, r5);
 
     if ((int)bss_ptr != 0x0a000000 && res >= 0) {
-        if (*(int*)(RPX_NAME) != 0) {
+        if (GAME_RPX_LOADED != 0) {
             int client = client_num_alloc(r3);
             if (client >= 0) {
                 if (fs_connect(&bss.socket_fs[client]) != 0)
@@ -785,7 +785,7 @@ static int LoadRPLToMemory(s_rpx_rpl *rpl_entry)
     }
 
     // calculate path length for SD access of RPL
-    int path_len = strlen(CAFE_OS_SD_PATH) + strlen(SD_GAMES_PATH) + strlen((char *)GAME_DIR_NAME) + strlen(RPX_RPL_PATH) + strlen(rpl_entry->name) + 3;
+    int path_len = strlen(CAFE_OS_SD_PATH) + strlen(SD_GAMES_PATH) + strlen(GAME_DIR_NAME) + strlen(RPX_RPL_PATH) + strlen(rpl_entry->name) + 3;
     char *path_rpl = MEMAllocFromDefaultHeap(path_len);
     if(!path_rpl) {
         MEMFreeToDefaultHeap(pCmd);
@@ -793,7 +793,7 @@ static int LoadRPLToMemory(s_rpx_rpl *rpl_entry)
         return 0;
     }
     // create path
-    __os_snprintf(path_rpl, path_len, "%s%s/%s%s/%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, (char *)GAME_DIR_NAME, RPX_RPL_PATH, rpl_entry->name);
+    __os_snprintf(path_rpl, path_len, "%s%s/%s%s/%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, GAME_DIR_NAME, RPX_RPL_PATH, rpl_entry->name);
 
     // malloc mem for read file
     unsigned char* dataBuf = (unsigned char*)MEMAllocFromDefaultHeapEx(0x1000, 0x40);
@@ -876,7 +876,7 @@ static int LoadRPLToMemory(s_rpx_rpl *rpl_entry)
  * ****************************************************************************/
 static int CheckAndLoadRPL(const char *rpl) {
     // If we are in Smash Bros app
-    if (*(volatile unsigned int *)RPX_NAME_PENDING == 0)
+    if (GAME_LAUNCHED == 0)
         return 0;
 
     // Look for rpl name in our table

@@ -216,9 +216,11 @@ void _start()
             InstallFS(&private_data);
             /* patch server IP */
             *((volatile unsigned int *)(INSTALL_FS_ADDR + 0xC1000000)) = ip_address;
-
             /* Set GAME_LAUNCHED to 0 */
-            *(volatile unsigned int *)(GAME_LAUNCHED) = 0;
+            GAME_LAUNCHED = 0;
+            GAME_RPX_LOADED = 0;
+            /* Set LOADIINE mode to smash bros initially */
+            LOADIINE_MODE = LOADIINE_MODE_SMASH_BROS;
         }
 
         /* free memory allocated */

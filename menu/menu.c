@@ -1,4 +1,5 @@
 #include "menu.h"
+#include "util.h"
 #include "../common/common.h"
 
 /* Utils for the display */
@@ -12,6 +13,7 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
 static void CreateGameSaveDir(FSClient *pClient, FSCmdBlock *pCmd, const char *dir_entry, char* mount_path);
 static void GenerateMemoryAreasTable();
 static void AddMemoryArea(int start, int end, int cur_index);
+static int game_name_cmp(const void *game1, const void *game2);
 
 /* Entry point */
 int _start(int argc, char *argv[]) {
@@ -25,13 +27,11 @@ int _start(int argc, char *argv[]) {
         title_id != 0x000500101004A000)   // mii maker jpn
         return main(argc, argv);
 
-#if (IS_USING_MII_MAKER == 1)
     // check if game is launched, if yes continue coreinit process
-    if (*(int*)(GAME_LAUNCHED) == 1)
+    if ((GAME_LAUNCHED == 1) && (LOADIINE_MODE == LOADIINE_MODE_MII_MAKER))
     {
         return main(argc, argv);
     }
-#endif
 
     /* ****************************************************************** */
     /*           Get _SYSLaunchTitleByPathFromLauncher pointer            */
@@ -54,11 +54,14 @@ int _start(int argc, char *argv[]) {
     /*                              Init Memory                           */
     /* ****************************************************************** */
 
-    char* msg           = (char*)malloc(80);
-    char* mount_path    = (char*)malloc(FS_MAX_MOUNTPATH_SIZE);
-    char* path          = (char*)malloc(FS_MAX_MOUNTPATH_SIZE);
-
-    char game_dir[MAX_GAME_COUNT][FS_MAX_ENTNAME_SIZE];
+    char* msg           = (char*) malloc(80);
+    char* mount_path    = (char*) malloc(FS_MAX_MOUNTPATH_SIZE);
+    char* path          = (char*) malloc(FS_MAX_MOUNTPATH_SIZE);
+    char **game_dir     = (char**)malloc(MAX_GAME_COUNT * sizeof(char *));
+    // initialize all string pointers of the game list with 0
+    int j;
+    for(j = 0; j < MAX_GAME_COUNT; j++)
+        game_dir[j]     = NULL;
 
     /* ****************************************************************** */
     /*                              Init Screen                           */
@@ -132,8 +135,15 @@ int _start(int argc, char *argv[]) {
                     FSDirEntry dir_entry;
                     while (FSReadDir(pClient, pCmd, game_dh, &dir_entry, FS_RET_ALL_ERROR) == FS_STATUS_OK && game_count < MAX_GAME_COUNT)
                     {
-                        memcpy(game_dir[game_count], dir_entry.name, FS_MAX_ENTNAME_SIZE);
-                        game_count++;
+                        // allocate string length + 0 termination bytes
+                        int name_len = strlen(dir_entry.name);
+                        game_dir[game_count] = (char *)malloc(name_len + 1);
+                        if(!game_dir[game_count])
+                            continue;
+                        // copy game name
+                        memcpy(game_dir[game_count], dir_entry.name, name_len + 1);
+                        if(game_count < MAX_GAME_COUNT)
+                            game_count++;
                     }
                     FSCloseDir(pClient, pCmd, game_dh, FS_RET_NO_ERROR);
                 }
@@ -149,12 +159,16 @@ int _start(int argc, char *argv[]) {
     uint8_t button_pressed = 1;
     uint8_t first_pass = 1;
     uint8_t launching = 0;
-    int     auto_launch = 0;
+    int     mii_maker_mode = 0;
     uint8_t ready = 0;
     int     error;
 
+    // sort game name pointers by name case insensitive
+    qsort(game_dir, game_count, sizeof(char*), game_name_cmp);
+
     VPADData vpad_data;
     VPADRead(0, &vpad_data, 1, &error); //Read initial vpad status
+
     while (1)
     {
         // Refresh screen if needed
@@ -164,7 +178,7 @@ int _start(int argc, char *argv[]) {
         VPADRead(0, &vpad_data, 1, &error);
 
         // Title : "-- LOADINE --"
-        PRINT_TEXT1(24, 1, "-- LOADIINE --");
+        PRINT_TEXT2(20, 1, "-- LOADIINE %s --", LOADIINE_VERSION);
 
         if (!sd_status)
         {
@@ -185,8 +199,6 @@ int _start(int argc, char *argv[]) {
                     game_index = (game_count - mid_page);
             }
 
-            // Nb games : "%d games :"
-            PRINT_TEXT2(0, 17, "%d games", game_count);
 
             // Print game titles
             for (int i = 0; (i < MAX_GAME_ON_PAGE) && ((game_index + i) < game_count); i++)
@@ -197,6 +209,12 @@ int _start(int argc, char *argv[]) {
             // Print selector
             PRINT_TEXT1(0, 3 + game_sel - game_index, "=>");
 
+            // Nb games : "%d games :"
+            PRINT_TEXT2(0, 16, "%d games", game_count);
+
+            // Print buttons mapping
+            PRINT_TEXT1(0, 17, "Press A for Smash Bros U mode or X for Mii Maker mode");
+
             // Check buttons
             if (!button_pressed)
             {
@@ -204,7 +222,7 @@ int _start(int argc, char *argv[]) {
                 if (vpad_data.btn_hold & BUTTON_DOWN) game_sel = ((game_sel + 1) % game_count);
 
                 // Launch game
-                if ((auto_launch = (vpad_data.btn_hold & BUTTON_A)) || (vpad_data.btn_hold & BUTTON_X))
+                if ((vpad_data.btn_hold & BUTTON_A) || (mii_maker_mode = (vpad_data.btn_hold & BUTTON_X)))
                 {
                     launching = 1;
 
@@ -265,20 +283,23 @@ int _start(int argc, char *argv[]) {
         // Check launch
         if (launching)
         {
-            if (ready) {
-#if (IS_USING_MII_MAKER == 0)
-                if (auto_launch) {
+            if (ready)
+            {
+                // Set game launched
+                GAME_LAUNCHED = 1;
+                GAME_RPX_LOADED = 0;
+                LOADIINE_MODE = mii_maker_mode ? LOADIINE_MODE_MII_MAKER : LOADIINE_MODE_SMASH_BROS;
+
+                // check launcher mode
+                if (LOADIINE_MODE == LOADIINE_MODE_SMASH_BROS) {
                     // Launch smash bros disk without exiting to menu
                     char buf_vol_odd[20] = "/vol/storage_odd03";
                     _SYSLaunchTitleByPathFromLauncher(buf_vol_odd, 18, 0);
                 }
-#else
-                // Set game launched
-                *(int*)(GAME_LAUNCHED) = 1;
-
-                // Restart mii maker
-                SYSRelaunchTitle(0, NULL);
-#endif
+                else {
+                    // Restart mii maker
+                    SYSRelaunchTitle(0, NULL);
+                }
                 break;
             }
             PRINT_TEXT1(45, 17, "Can't launch game!");
@@ -296,6 +317,21 @@ int _start(int argc, char *argv[]) {
     }
 
     /* ****************************************************************** */
+    /*                            Free Memory                             */
+    /* ****************************************************************** */
+    // free each game name pointer
+    for(j = 0; j < MAX_GAME_COUNT; j++) {
+        if(game_dir[j])
+            free(game_dir[j]);
+    }
+    // free game list pointer array
+    free(game_dir);
+    // free path strings
+    free(mount_path);
+    free(path);
+    free(msg);
+
+    /* ****************************************************************** */
     /*                            Unmount SD Card                         */
     /* ****************************************************************** */
 //    if (sd_status == 1)
@@ -308,13 +344,6 @@ int _start(int argc, char *argv[]) {
     /* ****************************************************************** */
 
     return main(argc, argv);
-}
-
-static int strlen(const char* str) {
-    int i = 0;
-    while (str[i])
-        i++;
-    return i;
 }
 
 /* IsRPX */
@@ -433,18 +462,6 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
 
         // fill rpx entry
         Add_RPX_RPL_Entry(dir_entry->name, cur_size, is_rpx, entry_index);
-
-        // Set rpx name (not really needed anymore)
-        uRpxName rpx;
-        rpx.name[0] = dir_entry->name[0];
-        rpx.name[1] = dir_entry->name[1];
-        rpx.name[2] = dir_entry->name[2];
-        rpx.name[3] = dir_entry->name[3];
-        rpx.name[4] = 0;
-
-        // Set pending rpx name
-        *(volatile unsigned int*)(RPX_NAME_PENDING) = rpx.name_full;
-        *(volatile unsigned int*)(RPX_NAME) = 0;
 
         // close file and free memory
         FSCloseFile(pClient, pCmd, fd, FS_RET_NO_ERROR);
@@ -610,8 +627,8 @@ static void GenerateMemoryAreasTable()
 //        {0xC0000000 + 0x00800000, 0xC0000000 + 0x01E20000}, // 22876 kB     // ok
 
 
-        {0xB8000000 + 0x06609ABC, 0xB8000000 + 0x07F82C00}, // 26084 kB     // ok
         {0xC0000000 + 0x00800000, 0xC0000000 + 0x01E20000}, // 22876 kB     // ok
+        {0xB8000000 + 0x06609ABC, 0xB8000000 + 0x07F82C00}, // 26084 kB     // ok
 
         {0, 0}
     }; // total : 66mB + 25mB
@@ -638,4 +655,13 @@ static void AddMemoryArea(int start, int end, int cur_index)
     {
         mem_area[cur_index - 1].next = mem_area;
     }
+}
+
+static int game_name_cmp(const void *game1, const void *game2)
+{
+    // the pointers passed here are pointers to the string pointer so dereference them
+    const char *game_name_1 = *((const char **)game1);
+    const char *game_name_2 = *((const char **)game2);
+    // compare strings case insensitive
+    return strcasecmp(game_name_1, game_name_2);
 }

@@ -65,23 +65,20 @@ void LOADER_Start(void)
 //    loader[1].tag = 0;
 //    loader[1].data = 0;
 
-    *(volatile unsigned int *)(BOUNCE_FLAG_ADDR) = 0;         // Bounce flag off
-    *(volatile unsigned int *)(IS_ACTIVE_ADDR) = 0;           // replacement off
-    *(volatile unsigned int *)(MEM_OFFSET) = 0;               // RPX/RPL load offset
-    *(volatile unsigned int *)(MEM_AREA) = 0;                 // RPX/RPL current memory area
-    *(volatile unsigned int *)(MEM_PART) = 0;                 // RPX/RPL part to fill (0=0xF6000000-0xF6400000, 1=0xF6400000-0xF6800000)
-    *(volatile unsigned int *)(RPL_REPLACE_ADDR) = 0;         // Reset
-    *(volatile unsigned int *)(RPL_ENTRY_INDEX_ADDR) = 0;     // Reset
-    *(volatile unsigned int *)(IS_LOADING_RPX_ADDR) = 1;      // Set RPX loading
+    BOUNCE_FLAG_ADDR = 0;         // Bounce flag off
+    IS_ACTIVE_ADDR = 0;           // replacement off
+    MEM_OFFSET = 0;               // RPX/RPL load offset
+    MEM_AREA = 0;                 // RPX/RPL current memory area
+    MEM_PART = 0;                 // RPX/RPL part to fill (0=0xF6000000-0xF6400000, 1=0xF6400000-0xF6800000)
+    RPL_REPLACE_ADDR = 0;         // Reset
+    RPL_ENTRY_INDEX_ADDR = 0;     // Reset
+    IS_LOADING_RPX_ADDR = 1;      // Set RPX loading
 
     // Disable fs
-    if (*(volatile unsigned int *)0xEFE00000 != RPX_CHECK_NAME)
+    if ((*(volatile unsigned int *)0xEFE00000 != RPX_CHECK_NAME) && (GAME_RPX_LOADED == 1))
     {
-        *(volatile unsigned int *)(RPX_NAME) = 0;
-
-        #if (IS_USING_MII_MAKER == 1)
-            *(volatile unsigned int*)(GAME_LAUNCHED) = 0;
-        #endif
+        GAME_RPX_LOADED = 0;
+        GAME_LAUNCHED = 0;
     }
 
     // return properly
@@ -110,8 +107,8 @@ void LOADER_Entry(void)
     );
 
     // Do our stuff
-    *(volatile unsigned int *)(RPL_REPLACE_ADDR) = 0;      // Reset
-    *(volatile unsigned int *)(IS_LOADING_RPX_ADDR) = 0;   // Set RPL loading
+    RPL_REPLACE_ADDR = 0;      // Reset
+    IS_LOADING_RPX_ADDR = 0;   // Set RPL loading
 
     // Logs
 //    loader_debug_t * loader = (loader_debug_t *)DATA_ADDR;
@@ -153,14 +150,10 @@ void LOADER_Prep(void)
 //    loader[1].tag = 0;
 
     // Reset
-    *(volatile unsigned int *)(IS_ACTIVE_ADDR) = 0; // Set as inactive
+    IS_ACTIVE_ADDR = 0; // Set as inactive
 
     // If we are in Smash Bros app or Mii Maker
-#if (IS_USING_MII_MAKER == 0)
-    if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME)
-#else
-    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (*(volatile unsigned int*)(GAME_LAUNCHED) == 1))
-#endif
+    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (GAME_LAUNCHED == 1))
     {
         // Check if it is an rpl we want, look for rpl name
         char* rpl_name = (char*)(*(volatile unsigned int *)(r29 + 0x08));
@@ -195,8 +188,8 @@ void LOADER_Prep(void)
             if (found)
             {
                 // Set rpl has to be added, and save entry index
-                *(volatile unsigned int *)(RPL_REPLACE_ADDR) = 1;
-                *(volatile unsigned int *)(RPL_ENTRY_INDEX_ADDR) = (unsigned int)rpl_struct;
+                RPL_REPLACE_ADDR = 1;
+                RPL_ENTRY_INDEX_ADDR = (unsigned int)rpl_struct;
 
                 // Patch the loader instruction after LiWaitOneChunk to say : yes it's ok I have data =)
                 *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK1_AFTER1_ADDR)) = LI_WAIT_ONE_CHUNK1_AFTER1_NEW_INSTR;
@@ -237,19 +230,15 @@ void LiLoadRPLBasics_bef_LiWaitOneChunk(void)
     );
 
     // If we are in Smash Bros app
-#if (IS_USING_MII_MAKER == 0)
-    if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME)
-#else
-    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (*(volatile unsigned int*)(GAME_LAUNCHED) == 1))
-#endif
+    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (GAME_LAUNCHED == 1))
     {
         s_rpx_rpl *entry = 0;
 
-        if (*(volatile unsigned int *)(RPL_REPLACE_ADDR) == 1)
+        if (RPL_REPLACE_ADDR == 1)
         {
-            entry = (s_rpx_rpl *)( *(volatile unsigned int *)(RPL_ENTRY_INDEX_ADDR) );
+            entry = (s_rpx_rpl *)(RPL_ENTRY_INDEX_ADDR);
         }
-        else if (*(volatile unsigned int *)(IS_LOADING_RPX_ADDR) == 1)
+        else if (IS_LOADING_RPX_ADDR == 1)
         {
             entry = (s_rpx_rpl*)(RPX_RPL_ARRAY);
 
@@ -270,7 +259,7 @@ void LiLoadRPLBasics_bef_LiWaitOneChunk(void)
                 size = 0x400000;
             // save stack pointer of RPX/RPL size for later use in LiLoadRPLBasics_in_1_load
             *(volatile unsigned int*)(r3) = size;
-            *(volatile unsigned int*)RPX_SIZE_POINTER_1 = r3;
+            RPX_SIZE_POINTER_1 = r3;
         }
     }
 
@@ -301,20 +290,16 @@ void LiLoadRPLBasics_in_1_load(void)
     );
 
     // If we are in Smash Bros app
-#if (IS_USING_MII_MAKER == 0)
-    if (*(volatile unsigned int *)0xEFE00000 == RPX_CHECK_NAME)
-#else
-    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (*(volatile unsigned int*)(GAME_LAUNCHED) == 1))
-#endif
+    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (GAME_LAUNCHED == 1))
     {
         // Check if it is an rpx, look for rpx name, if it is rpl, it is already marked
         int is_rpx = 0;
         s_rpx_rpl * rpx_rpl_entry = 0;
 
         // Check if rpl is already marked
-        if (*(volatile unsigned int *)(RPL_REPLACE_ADDR) == 1)
+        if (RPL_REPLACE_ADDR == 1)
         {
-            rpx_rpl_entry = (s_rpx_rpl *) (*(volatile unsigned int *)(RPL_ENTRY_INDEX_ADDR));
+            rpx_rpl_entry = (s_rpx_rpl *) (RPL_ENTRY_INDEX_ADDR);
 
             // Restore original instruction after LiWaitOneChunk
             *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK1_AFTER1_ADDR)) = LI_WAIT_ONE_CHUNK1_AFTER1_ORIG_INSTR;
@@ -373,7 +358,7 @@ void LiLoadRPLBasics_in_1_load(void)
             }
             else
             {
-                *(volatile unsigned int*)(RPL_REPLACE_ADDR) = 0;
+                RPL_REPLACE_ADDR = 0;
             }
 
             // Replace rpx/rpl data
@@ -391,12 +376,13 @@ void LiLoadRPLBasics_in_1_load(void)
             }
 
             // Reduce size and set offset
-            *(volatile unsigned int *)(MEM_SIZE)    = rpx_rpl_entry->size - size;
-            *(volatile unsigned int *)(MEM_AREA)    = (int)mem_area;
-            *(volatile unsigned int *)(MEM_OFFSET)  = mem_area_offset;
-            *(volatile unsigned int *)(MEM_PART)    = 1;
+            MEM_SIZE    = rpx_rpl_entry->size - size;
+            MEM_AREA    = (int)mem_area;
+            MEM_OFFSET  = mem_area_offset;
+            MEM_PART    = 1;
 
-            unsigned int rpx_size_ptr = *(volatile unsigned int*)RPX_SIZE_POINTER_1;
+            // get the stack pointer of the upper calling function and set the correct size directly into stack variables
+            unsigned int rpx_size_ptr = RPX_SIZE_POINTER_1;
             *(volatile unsigned int *)rpx_size_ptr = size;
             *(volatile unsigned int*)(r29 + 0x20) = size;
 
@@ -404,11 +390,11 @@ void LiLoadRPLBasics_in_1_load(void)
             if (is_rpx)
             {
                 // Set rpx name as active for FS to replace file from sd card
-                *(volatile unsigned int *)(RPX_NAME) = *(volatile unsigned int *)(RPX_NAME_PENDING);
+                GAME_RPX_LOADED = 1;
             }
 
             // Replacement ON
-            *(volatile unsigned int *)(IS_ACTIVE_ADDR) = 1;
+            IS_ACTIVE_ADDR = 1;
         }
     }
 
@@ -426,29 +412,33 @@ void LiLoadRPLBasics_in_1_load(void)
  */
 unsigned int GetNextBounce_bef_LiWaitOneChunk(unsigned int rpx_size_ptr)
 {
-    *(volatile unsigned int*)RPX_SIZE_POINTER_2 = rpx_size_ptr;
+    // save the stack pointer of the above function for later use after LiWaitOneChunk is complete
+    RPX_SIZE_POINTER_2 = rpx_size_ptr;
     *(volatile unsigned int*)rpx_size_ptr = 0;
     return rpx_size_ptr;
 }
 
 /* GetNextBounce_af_LiWaitOneChunk ********************************************
+ * This function is called dynamically when RPL/RPX >= 0x400000 are loaded.
+ * This function is also patched dynamically and is not called for unknown RPLs/RPXs.
  * - instruction address = 0x0100B6EC
  * - original instruction = 0x408200C0 : "bne loc_100B7AC"
  */
 static void GetNextBounce_af_LiWaitOneChunk(void)
 {
     // If it is active
-    int is_active = *(volatile unsigned int *)(IS_ACTIVE_ADDR);
+    int is_active = IS_ACTIVE_ADDR;
     if (is_active)
     {
-        unsigned int rpx_size_ptr = *(volatile unsigned int*)RPX_SIZE_POINTER_2;
+        unsigned int rpx_size_ptr = RPX_SIZE_POINTER_2;
         // Check if we need to adjust the read size and offset
-        int size = *(volatile unsigned int *)(MEM_SIZE);
+        int size = MEM_SIZE;
         if (size > 0x400000)
             size = 0x400000;
 
+        // get stack pointer stored before calling LiWaitOneChunk and store the remaining size in it
         *(volatile unsigned int *)(rpx_size_ptr) = size;
-        *(volatile unsigned int *)(BOUNCE_FLAG_ADDR) = 1; // Bounce flag on
+        BOUNCE_FLAG_ADDR = 1; // Bounce flag on
     }
 }
 
@@ -459,25 +449,25 @@ static void GetNextBounce_af_LiWaitOneChunk(void)
 void LiRefillBounceBufferForReading_af_getbounce(void)
 {
     // If a bounce is waiting
-    int is_bounce_flag_on = *(volatile unsigned int *)(BOUNCE_FLAG_ADDR);
+    int is_bounce_flag_on = BOUNCE_FLAG_ADDR;
     if (is_bounce_flag_on)
     {
         // Replace rpx/rpl data
         int i;
 
         // Get remaining size of rpx/rpl to copy and truncate it to 0x400000 bytes
-        int size = *(volatile unsigned int *)(MEM_SIZE);
+        int size = MEM_SIZE;
         if (size > 0x400000)
             size = 0x400000;
 
         // Get where rpx/rpl code needs to be copied
-        int base = 0xF6000000 + (*(volatile unsigned int *)(MEM_PART) * 0x400000);
+        int base = 0xF6000000 + (MEM_PART * 0x400000);
 
         // Get current memory area
-        s_mem_area* mem_area    = (s_mem_area*)(*(volatile unsigned int *)(MEM_AREA));
+        s_mem_area* mem_area    = (s_mem_area*)(MEM_AREA);
         int mem_area_addr_start = mem_area->address;
         int mem_area_addr_end   = mem_area_addr_start + mem_area->size;
-        int mem_area_offset     = *(volatile unsigned int *)(MEM_OFFSET);
+        int mem_area_offset     = MEM_OFFSET;
 
         // Copy rpx/rpl data
         for (i = 0; i < (size / 4); i++)
@@ -495,13 +485,13 @@ void LiRefillBounceBufferForReading_af_getbounce(void)
         }
 
         // Reduce size and set offset
-        *(volatile unsigned int*)(MEM_SIZE)   = *(volatile unsigned int*)(MEM_SIZE) - size;
-        *(volatile unsigned int*)(MEM_AREA)   = (int)mem_area;
-        *(volatile unsigned int*)(MEM_OFFSET) = mem_area_offset;
-        *(volatile unsigned int*)(MEM_PART)   = (*(volatile unsigned int *)(MEM_PART) + 1) % 2;
+        MEM_SIZE   = MEM_SIZE - size;
+        MEM_AREA   = (int)mem_area;
+        MEM_OFFSET = mem_area_offset;
+        MEM_PART   = (MEM_PART + 1) % 2;
 
         // Bounce flag OFF
-        *(volatile unsigned int *)(BOUNCE_FLAG_ADDR) = 0;
+        BOUNCE_FLAG_ADDR = 0;
     }
 
     // return properly
