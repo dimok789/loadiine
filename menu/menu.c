@@ -44,6 +44,9 @@ int _start(int argc, char *argv[]) {
 
     int(*SYSRelaunchTitle)(uint argc, char* argv) = 0;
     OSDynLoad_FindExport(sysapp_handle, 0, "SYSRelaunchTitle", &SYSRelaunchTitle);
+    
+    int(*SYSLaunchMenu)() = 0;
+    OSDynLoad_FindExport(sysapp_handle, 0, "SYSLaunchMenu", &SYSLaunchMenu);
 
     /* ****************************************************************** */
     /*                 Get SYSRelaunchTitle pointer                       */
@@ -160,6 +163,7 @@ int _start(int argc, char *argv[]) {
     uint8_t first_pass = 1;
     uint8_t launching = 0;
     int     mii_maker_mode = 0;
+    int     return_to_home = 0;
     uint8_t ready = 0;
     int     error;
 
@@ -210,10 +214,11 @@ int _start(int argc, char *argv[]) {
             PRINT_TEXT1(0, 3 + game_sel - game_index, "=>");
 
             // Nb games : "%d games :"
-            PRINT_TEXT2(0, 16, "%d games", game_count);
+            PRINT_TEXT2(0, 15, "%d games", game_count);
 
             // Print buttons mapping
-            PRINT_TEXT1(0, 17, "Press A for Smash Bros U mode or X for Mii Maker mode");
+            PRINT_TEXT1(0, 16, "Press A for Smash Bros U mode (or Y to return to Home Menu)");
+            PRINT_TEXT1(0, 17, "Press X for Mii Maker mode");
 
             // Check buttons
             if (!button_pressed)
@@ -222,7 +227,9 @@ int _start(int argc, char *argv[]) {
                 if (vpad_data.btn_hold & BUTTON_DOWN) game_sel = ((game_sel + 1) % game_count);
 
                 // Launch game
-                if ((vpad_data.btn_hold & BUTTON_A) || (mii_maker_mode = (vpad_data.btn_hold & BUTTON_X)))
+                if ((vpad_data.btn_hold & BUTTON_A) ||
+                    (return_to_home = (vpad_data.btn_hold & BUTTON_Y)) ||
+                    (mii_maker_mode = (vpad_data.btn_hold & BUTTON_X)))
                 {
                     launching = 1;
 
@@ -292,9 +299,14 @@ int _start(int argc, char *argv[]) {
 
                 // check launcher mode
                 if (LOADIINE_MODE == LOADIINE_MODE_SMASH_BROS) {
-                    // Launch smash bros disk without exiting to menu
-                    char buf_vol_odd[20] = "/vol/storage_odd03";
-                    _SYSLaunchTitleByPathFromLauncher(buf_vol_odd, 18, 0);
+                    if (return_to_home == 0) {
+                        // Launch smash bros disk without exiting to menu
+                        char buf_vol_odd[20] = "/vol/storage_odd03";
+                        _SYSLaunchTitleByPathFromLauncher(buf_vol_odd, 18, 0);
+                    } else {
+                        // Go to home menu
+                        SYSLaunchMenu();
+                    }
                 }
                 else {
                     // Restart mii maker
