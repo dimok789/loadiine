@@ -5,7 +5,7 @@
 /*                 | |     ___   __ _  __| |_ _ _ __   ___                    */
 /*                 | |    / _ \ / _` |/ _` | | | '_ \ / _ \                   */
 /*                 | |___| (_) | (_| | (_| | | | | | |  __/                   */
-/*                 ______/\___/ \__,_|\__,_|_|_|_| |_|\___| v2.0              */
+/*                 ______/\___/ \__,_|\__,_|_|_|_| |_|\___| v3.0              */
 /*                                                                            */
 /*                    RPX/RPL and File Replacement Tool                       */
 /*                                                                            */
@@ -23,7 +23,7 @@
 
 - Wii U FW 5.3.2
 - SD(HC) Card
-- Super Smash Bros for Wii U (Disc or EShop version)
+- Super Smash Bros for Wii U (Disc or EShop version) - optional but provides better compatibility
 
 
 /******************************************************************************/
@@ -45,12 +45,12 @@
     - Press X to install loadiine with server enabled (use it for debug purpose, the server must be running before pressing X).
 
 - 6. The loadiine menu should open. Now, Select your App/Game using the D-Pad.
-    - Press A to launch Smash Bros disk, note that it does not work for everyone.
-        - Note : if you are using Smash Bros EShop version, press X instead.
-        - Your game should start
+    - Press A to use Smash Bros mode and launch directly the disk
+        - Note : auto-launch does not work for everyone, launch manually Smash Bros instead
+        - Note : if you are using Smash Bros EShop version, press Y instead, it returns to Home Menu, then launch Smash Bros.
    or
-    - Press X to install the game, Mii Maker will finish loading. Quit the application.
-        - Launch Super Smash Bros and wait for your Game/Application to load.
+    - Press X to use Mii Maker mode (Smash Bros disk is not needed)
+        - The game should start
 
 - 7. Enjoy
 
@@ -109,7 +109,7 @@ Your file structure should look like this if the above information was used :
 /* Limitations :                                                              */
 /******************************************************************************/
 
-- The total size of each RPX and RPL filesmust be less than 25.47 MB
+- The total size of each RPX and RPL files must be less than 65.7 MB (tested up to 47.3 MB)
 - Don't go in the wiiu settings it breaks everything
 
 

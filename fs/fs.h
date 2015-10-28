@@ -54,6 +54,15 @@ extern FSStatus FSCloseFile(FSClient *pClient, FSCmdBlock *pCmd, int fd, int err
 extern FSStatus FSAddClient(FSClient *pClient, FSRetFlag errHandling);
 extern void FSInitCmdBlock(FSCmdBlock *pCmd);
 
+/* Async callback definition */
+typedef void (*FSAsyncCallback)(void *pClient, void *pCmd, int result, void *context);
+typedef struct
+{
+    FSAsyncCallback userCallback;
+    void            *userContext;
+    void            *ioMsgQueue;
+} FSAsyncParams;
+
 /* Forward declarations */
 #define MAX_CLIENT 32
 
@@ -62,7 +71,6 @@ struct bss_t {
     int socket_fs[MAX_CLIENT];
     void *pClient_fs[MAX_CLIENT];
     volatile int lock;
-    int sd_mount[MAX_CLIENT];
     char mount_base[255];
     char save_base[255];
 	volatile int onStartHook;
