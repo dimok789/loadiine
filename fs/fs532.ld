@@ -48,6 +48,12 @@ PROVIDE(FSRename = 0x0106f9e0);
 PROVIDE(FSRenameAsync = 0x0106b66c);
 PROVIDE(FSRemove = 0x0106f960);
 PROVIDE(FSRemoveAsync = 0x0106b568);
+PROVIDE(FSFlushQuota = 0x0106fac8);
+PROVIDE(FSFlushQuotaAsync = 0x0106ba4c);
+PROVIDE(FSGetFreeSpaceSize = 0x0106fe38);
+PROVIDE(FSGetFreeSpaceSizeAsync = 0x0106c008);
+PROVIDE(FSRollbackQuota = 0x0106fc48);
+PROVIDE(FSRollbackQuotaAsync = 0x0106bb50);
 
 /* FS methods - Used by Dynamic RPL loading */
 PROVIDE(FSReadFile = 0x106f108);
@@ -76,6 +82,7 @@ PROVIDE(FSTruncateFile_log = 0x0106f3c0);
 PROVIDE(FSWriteFile_log = 0x0106f228);                  
 PROVIDE(FSWriteFileAsync_log = 0x0106aa08);
 PROVIDE(FSWriteFileWithPos_log = 0x0106f2b4);
+PROVIDE(FSGetVolumeState_log = 0x01068e20);
 
 /* FS methods for sd card */
 PROVIDE(FSGetMountSource = 0x0106ec24);

@@ -7,7 +7,7 @@
 
 /* General defines */
 #define MAX_GAME_COUNT      255
-#define MAX_GAME_ON_PAGE    12
+#define MAX_GAME_ON_PAGE    11
 
 /* Main */
 extern int (* const entry_point)(int argc, char *argv[]);

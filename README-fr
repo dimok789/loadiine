@@ -5,7 +5,7 @@
 /*                 | |     ___   __ _  __| |_ _ _ __   ___                    */
 /*                 | |    / _ \ / _` |/ _` | | | '_ \ / _ \                   */
 /*                 | |___| (_) | (_| | (_| | | | | | |  __/                   */
-/*                 ______/\___/ \__,_|\__,_|_|_|_| |_|\___| v2.0              */
+/*                 ______/\___/ \__,_|\__,_|_|_|_| |_|\___| v3.0              */
 /*                                                                            */
 /*                  Remplacement de fichiers et de RPX/RPL                    */
 /*                                                                            */
@@ -23,7 +23,7 @@
 
 - WiiU FW 5.3.2
 - Carte SD(HC)
-- Le disque de Super Smash Bros (ou la version EShop)
+- Le disque de Super Smash Bros (ou la version EShop) - optionnel mais fournit une meilleure compatibilité
 
 
 /******************************************************************************/
@@ -45,11 +45,12 @@
     - Appuyez sur X pour lancer loadiine avec le serveur activé (le serveur doit être démarré avant d'appuyer sur X)
 
 - 6. Le menu de loadiine doit s'ouvrir. Choisissez votre application/jeu avec le pad.
-    - Appuyez sur A pour lancer directement le disque de Smash Bros. Cette méthode ne fonctionne pas pour tout le monde cependant.
-        - Note : si vous utilisez la version EShop de Smash Bros, appuyez sur X à la place.
+    - Appuyez sur A pour utiliser le mode Smash Bros et lancer directement le disque.
+        - Note : le lancement automatique ne fonctionne pas pour tout le monde, si c'est le cas pour vous, lancer manuellement le disque.
+        - Note : si vous utilisez la version EShop de Smash Bros, appuyez sur Y à la place, vous serez redirigé jusqu'au menu principal, lancez ensuite Smash Bros.
    ou
-    - Appuyez sur X pour installer le jeu, l'éditeur Mii se lance, quittez-le pour retourner au menu principal
-        - Lancez Super Smash Bros et attendez que votre jeu/application se lance
+    - Appuyez sur X pour utiliser le mode Editeur Mii. (Le disque de Smash Bros n'est pas requis)
+        - Le jeu doit se lancer
 
 - 7. Kiff
 
@@ -108,7 +109,7 @@ La structure de la carte SD doit ressembler à ça après avoir suivit les étap
 /* Contraintes :                                                              */
 /******************************************************************************/
 
-- La taille de chaque fichier RPX et RPL ne doit pas dépasser 25.47Mo (le total de ces fichiers par contre peut être plus grand)
+- La taille de chaque fichier RPX et RPL ne doit pas dépasser 65.7 Mo (testé jusqu'à 47.3 Mo)
 - N'allez pas dans les paramètres de la wiiu sinon ça casse tout
 
 

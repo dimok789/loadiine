@@ -2,12 +2,16 @@
 #include "exception_handler.h"
 #include "../common/common.h"
 
-#define USE_EXTRA_LOG_FUNCTIONS   1
+#define USE_EXTRA_LOG_FUNCTIONS   0
 
 #define DECL(res, name, ...) \
         extern res name(__VA_ARGS__); \
         res (* real_ ## name)(__VA_ARGS__)  __attribute__((section(".magicptr"))); \
         res my_ ## name(__VA_ARGS__)
+
+/* Prototypes */
+int FSAddClientEx(void *r3, void *r4, void *r5);
+int FSDelClient(void *pClient);
 
 /* Log functions */
 //static const struct {
@@ -60,7 +64,6 @@ static int client_num_alloc(void *pClient) {
 }
 static void client_num_free(int client) {
     bss.pClient_fs[client] = 0;
-    bss.sd_mount[client] = 0;
 }
 static int client_num(void *pClient) {
     int i;
@@ -201,20 +204,7 @@ static void compute_new_path(char* new_path, char* path, int len, int is_save) {
     }
 }
 
-static int GetCurClient(void *pClient, void *pCmd) {
-    if ((int)bss_ptr != 0x0a000000) {
-        int client = client_num(pClient);
-        if (client >= 0) {
-            // mount sd card in the same time
-            if (!bss.sd_mount[client])
-                bss.sd_mount[client] = fs_mount_sd(bss.socket_fs[client], pClient, pCmd);
-            return client;
-        }
-    }
-    return -1;
-}
-
-static int GetCurClientNoSD(void *pClient) {
+static int GetCurClient(void *pClient) {
     if ((int)bss_ptr != 0x0a000000) {
         int client = client_num(pClient);
         if (client >= 0) {
@@ -223,19 +213,12 @@ static int GetCurClientNoSD(void *pClient) {
     }
     return -1;
 }
-
-// Async
-typedef void (*FSAsyncCallback)(void *pClient, void *pCmd, int result, void *context);
-typedef struct
-{
-    FSAsyncCallback userCallback;
-    void            *userContext;
-    void            *ioMsgQueue;
-} FSAsyncParams;
 
 /* *****************************************************************************
  * Base functions
  * ****************************************************************************/
+
+
 DECL(int, FSInit, void) {
     if ((int)bss_ptr == 0x0a000000) {
         bss_ptr = memalign(sizeof(struct bss_t), 0x40);
@@ -245,11 +228,37 @@ DECL(int, FSInit, void) {
         setup_os_exceptions();
 
         // create game mount path prefix
-        __os_snprintf(bss.mount_base, sizeof(bss.mount_base), "%s%s/%s%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, (char *)GAME_DIR_NAME, CONTENT_PATH);
+        __os_snprintf(bss.mount_base, sizeof(bss.mount_base), "%s%s/%s%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, GAME_DIR_NAME, CONTENT_PATH);
         // create game save path prefix
-        __os_snprintf(bss.save_base, sizeof(bss.save_base), "%s%s/%s", CAFE_OS_SD_PATH, SD_SAVES_PATH, (char *)GAME_DIR_NAME);
+        __os_snprintf(bss.save_base, sizeof(bss.save_base), "%s%s/%s", CAFE_OS_SD_PATH, SD_SAVES_PATH, GAME_DIR_NAME);
 
         fs_connect(&bss.global_sock);
+        
+        // Call real FSInit
+        int result = real_FSInit();
+
+        // Mount sdcard
+        FSClient *pClient = (FSClient*) MEMAllocFromDefaultHeap(sizeof(FSClient));
+        if (!pClient)
+            return 0;
+
+        FSCmdBlock *pCmd = (FSCmdBlock*) MEMAllocFromDefaultHeap(sizeof(FSCmdBlock));
+        if (!pCmd)
+        {
+            MEMFreeToDefaultHeap(pClient);
+            return 0;
+        }
+
+        FSInitCmdBlock(pCmd);
+        FSAddClientEx(pClient, 0, FS_RET_NO_ERROR);
+
+        fs_mount_sd(bss.global_sock, pClient, pCmd);
+        
+        FSDelClient(pClient);
+        MEMFreeToDefaultHeap(pCmd);
+        MEMFreeToDefaultHeap(pClient);
+        
+        return result;
     }
     return real_FSInit();
 }
@@ -264,7 +273,7 @@ DECL(int, FSAddClientEx, void *r3, void *r4, void *r5) {
     int res = real_FSAddClientEx(r3, r4, r5);
 
     if ((int)bss_ptr != 0x0a000000 && res >= 0) {
-        if (*(int*)(RPX_NAME) != 0) {
+        if (GAME_RPX_LOADED != 0) {
             int client = client_num_alloc(r3);
             if (client >= 0) {
                 if (fs_connect(&bss.socket_fs[client]) != 0)
@@ -293,7 +302,7 @@ DECL(int, FSDelClient, void *pClient) {
  * Replacement functions
  * ****************************************************************************/
 DECL(int, FSGetStat, void *pClient, void *pCmd, char *path, void *stats, int error) {
-    int client = GetCurClient(pClient, pCmd);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         // log
         log_string(bss.socket_fs[client], path, BYTE_STAT);
@@ -315,7 +324,7 @@ DECL(int, FSGetStat, void *pClient, void *pCmd, char *path, void *stats, int err
 }
 
 DECL(int, FSGetStatAsync, void *pClient, void *pCmd, char *path, void *stats, int error, FSAsyncParams *asyncParams) {
-    int client = GetCurClient(pClient, pCmd);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         // log
         log_string(bss.socket_fs[client], path, BYTE_STAT_ASYNC);
@@ -336,7 +345,7 @@ DECL(int, FSGetStatAsync, void *pClient, void *pCmd, char *path, void *stats, in
 }
 
 DECL(int, FSOpenFile, void *pClient, void *pCmd, char *path, char *mode, int *handle, int error) {
-    int client = GetCurClient(pClient, pCmd);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         // log
         log_string(bss.socket_fs[client], path, BYTE_OPEN_FILE);
@@ -358,7 +367,7 @@ DECL(int, FSOpenFile, void *pClient, void *pCmd, char *path, char *mode, int *ha
 }
 
 DECL(int, FSOpenFileAsync, void *pClient, void *pCmd, char *path, char *mode, int *handle, int error, FSAsyncParams *asyncParams) {
-    int client = GetCurClient(pClient, pCmd);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         // log
         log_string(bss.socket_fs[client], path, BYTE_OPEN_FILE_ASYNC);
@@ -378,7 +387,7 @@ DECL(int, FSOpenFileAsync, void *pClient, void *pCmd, char *path, char *mode, in
 }
 
 DECL(int, FSOpenDir, void *pClient, void* pCmd, char *path, int *handle, int error) {
-    int client = GetCurClient(pClient, pCmd);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         // log
         log_string(bss.socket_fs[client], path, BYTE_OPEN_DIR);
@@ -398,7 +407,7 @@ DECL(int, FSOpenDir, void *pClient, void* pCmd, char *path, int *handle, int err
 }
 
 DECL(int, FSOpenDirAsync, void *pClient, void* pCmd, char *path, int *handle, int error, FSAsyncParams *asyncParams) {
-    int client = GetCurClient(pClient, pCmd);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         // log
         log_string(bss.socket_fs[client], path, BYTE_OPEN_DIR_ASYNC);
@@ -418,7 +427,7 @@ DECL(int, FSOpenDirAsync, void *pClient, void* pCmd, char *path, int *handle, in
 }
 
 DECL(int, FSChangeDir, void *pClient, void *pCmd, char *path, int error) {
-    int client = GetCurClient(pClient, pCmd);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         // log
         log_string(bss.socket_fs[client], path, BYTE_CHANGE_DIR);
@@ -438,7 +447,7 @@ DECL(int, FSChangeDir, void *pClient, void *pCmd, char *path, int error) {
 }
 
 DECL(int, FSChangeDirAsync, void *pClient, void *pCmd, char *path, int error, FSAsyncParams *asyncParams) {
-    int client = GetCurClient(pClient, pCmd);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         // log
         log_string(bss.socket_fs[client], path, BYTE_CHANGE_DIR_ASYNC);
@@ -459,7 +468,7 @@ DECL(int, FSChangeDirAsync, void *pClient, void *pCmd, char *path, int error, FS
 
 // only for saves on sdcard
 DECL(int, FSMakeDir, void *pClient, void *pCmd, char *path, int error) {
-    int client = GetCurClient(pClient, pCmd);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         // log
         log_string(bss.socket_fs[client], path, BYTE_MAKE_DIR);
@@ -482,7 +491,7 @@ DECL(int, FSMakeDir, void *pClient, void *pCmd, char *path, int error) {
 
 // only for saves on sdcard
 DECL(int, FSMakeDirAsync, void *pClient, void *pCmd, char *path, int error, FSAsyncParams *asyncParams) {
-    int client = GetCurClient(pClient, pCmd);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         // log
         log_string(bss.socket_fs[client], path, BYTE_MAKE_DIR_ASYNC);
@@ -505,7 +514,7 @@ DECL(int, FSMakeDirAsync, void *pClient, void *pCmd, char *path, int error, FSAs
 
 // only for saves on sdcard
 DECL(int, FSRename, void *pClient, void *pCmd, char *oldPath, char *newPath, int error) {
-    int client = GetCurClient(pClient, pCmd);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         // log
         log_string(bss.socket_fs[client], oldPath, BYTE_RENAME);
@@ -536,7 +545,7 @@ DECL(int, FSRename, void *pClient, void *pCmd, char *oldPath, char *newPath, int
 
 // only for saves on sdcard
 DECL(int, FSRenameAsync, void *pClient, void *pCmd, char *oldPath, char *newPath, int error, FSAsyncParams *asyncParams) {
-    int client = GetCurClient(pClient, pCmd);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         // log
         log_string(bss.socket_fs[client], oldPath, BYTE_RENAME);
@@ -567,7 +576,7 @@ DECL(int, FSRenameAsync, void *pClient, void *pCmd, char *oldPath, char *newPath
 
 // only for saves on sdcard
 DECL(int, FSRemove, void *pClient, void *pCmd, char *path, int error) {
-    int client = GetCurClient(pClient, pCmd);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         // log
         log_string(bss.socket_fs[client], path, BYTE_REMOVE);
@@ -590,7 +599,7 @@ DECL(int, FSRemove, void *pClient, void *pCmd, char *path, int error) {
 
 // only for saves on sdcard
 DECL(int, FSRemoveAsync, void *pClient, void *pCmd, char *path, int error, FSAsyncParams *asyncParams) {
-    int client = GetCurClient(pClient, pCmd);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         // log
         log_string(bss.socket_fs[client], path, BYTE_REMOVE);
@@ -611,29 +620,290 @@ DECL(int, FSRemoveAsync, void *pClient, void *pCmd, char *path, int error, FSAsy
     return real_FSRemoveAsync(pClient, pCmd, path, error, asyncParams);
 }
 
+DECL(int, FSFlushQuota, void *pClient, void *pCmd, char* path, int error) {
+    int client = GetCurClient(pClient);
+    if (client != -1) {
+        // log
+        //log_string(bss.socket_fs[client], path, BYTE_REMOVE);
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "FSFlushQuota: %s", path);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+
+        // change path if it is a save folder
+        if (is_savefile(path)) {
+            int len = strlen(path);
+            int len_base = (strlen(bss.save_base) + 8);
+            char new_path[len + len_base + 1];
+            compute_new_path(new_path, path, len, 1);
+
+            // log new path
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+
+            return real_FSFlushQuota(pClient, pCmd, new_path, error);
+        }
+    }
+    return real_FSFlushQuota(pClient, pCmd, path, error);
+}
+DECL(int, FSFlushQuotaAsync, void *pClient, void *pCmd, char *path, int error, FSAsyncParams *asyncParams) {
+    int client = GetCurClient(pClient);
+    if (client != -1) {
+        // log
+        //log_string(bss.socket_fs[client], path, BYTE_REMOVE);
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "FSFlushQuotaAsync: %s", path);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+
+        // change path if it is a save folder
+        if (is_savefile(path)) {
+            int len = strlen(path);
+            int len_base = (strlen(bss.save_base) + 8);
+            char new_path[len + len_base + 1];
+            compute_new_path(new_path, path, len, 1);
+
+            // log new path
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+
+            return real_FSFlushQuotaAsync(pClient, pCmd, new_path, error, asyncParams);
+        }
+    }
+    return real_FSFlushQuotaAsync(pClient, pCmd, path, error, asyncParams);
+}
+
+DECL(int, FSGetFreeSpaceSize, void *pClient, void *pCmd, char *path, uint64_t *returnedFreeSize, int error) {
+    int client = GetCurClient(pClient);
+    if (client != -1) {
+        // log
+        //log_string(bss.socket_fs[client], path, BYTE_REMOVE);
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "FSGetFreeSpaceSize: %s", path);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+
+        // change path if it is a save folder
+        if (is_savefile(path)) {
+            int len = strlen(path);
+            int len_base = (strlen(bss.save_base) + 8);
+            char new_path[len + len_base + 1];
+            compute_new_path(new_path, path, len, 1);
+
+            // log new path
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+
+            return real_FSGetFreeSpaceSize(pClient, pCmd, new_path, returnedFreeSize, error);
+        }
+    }
+    return real_FSGetFreeSpaceSize(pClient, pCmd, path, returnedFreeSize, error);
+}
+DECL(int, FSGetFreeSpaceSizeAsync, void *pClient, void *pCmd, char *path, uint64_t *returnedFreeSize, int error, FSAsyncParams *asyncParams) {
+    int client = GetCurClient(pClient);
+    if (client != -1) {
+        // log
+        //log_string(bss.socket_fs[client], path, BYTE_REMOVE);
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "FSGetFreeSpaceSizeAsync: %s", path);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+
+        // change path if it is a save folder
+        if (is_savefile(path)) {
+            int len = strlen(path);
+            int len_base = (strlen(bss.save_base) + 8);
+            char new_path[len + len_base + 1];
+            compute_new_path(new_path, path, len, 1);
+
+            // log new path
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+
+            return real_FSGetFreeSpaceSizeAsync(pClient, pCmd, new_path, returnedFreeSize, error, asyncParams);
+        }
+    }
+    return real_FSGetFreeSpaceSizeAsync(pClient, pCmd, path, returnedFreeSize, error, asyncParams);
+}
+
+DECL(int, FSRollbackQuota, void *pClient, void *pCmd, char *path, int error) {
+    int client = GetCurClient(pClient);
+    if (client != -1) {
+        // log
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "FSRollbackQuota: %s", path);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+
+        // change path if it is a save folder
+        if (is_savefile(path)) {
+            int len = strlen(path);
+            int len_base = (strlen(bss.save_base) + 8);
+            char new_path[len + len_base + 1];
+            compute_new_path(new_path, path, len, 1);
+
+            // log new path
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+
+            return real_FSRollbackQuota(pClient, pCmd, new_path, error);
+        }
+    }
+    return real_FSRollbackQuota(pClient, pCmd, path, error);
+}
+DECL(int, FSRollbackQuotaAsync, void *pClient, void *pCmd, char *path, int error, FSAsyncParams *asyncParams) {
+    int client = GetCurClient(pClient);
+    if (client != -1) {
+        // log
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "FSRollbackQuotaAsync: %s", path);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+
+        // change path if it is a save folder
+        if (is_savefile(path)) {
+            int len = strlen(path);
+            int len_base = (strlen(bss.save_base) + 8);
+            char new_path[len + len_base + 1];
+            compute_new_path(new_path, path, len, 1);
+
+            // log new path
+            log_string(bss.socket_fs[client], new_path, BYTE_LOG_STR);
+
+            return real_FSRollbackQuotaAsync(pClient, pCmd, new_path, error, asyncParams);
+        }
+    }
+    return real_FSRollbackQuotaAsync(pClient, pCmd, path, error, asyncParams);
+}
+
 /* *****************************************************************************
- * Dynamic RPL loading
+ * Dynamic RPL loading to memory
+ * ****************************************************************************/
+static int LoadRPLToMemory(s_rpx_rpl *rpl_entry)
+{
+    if ((int)bss_ptr != 0x0a000000)
+    {
+        char buffer[200];
+        __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) found and loading", rpl_entry->name);
+        log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+    }
+
+    // initialize FS
+    FSInit();
+    FSClient *pClient = (FSClient*) MEMAllocFromDefaultHeap(sizeof(FSClient));
+    if (!pClient)
+        return 0;
+
+    FSCmdBlock *pCmd = (FSCmdBlock*) MEMAllocFromDefaultHeap(sizeof(FSCmdBlock));
+    if (!pCmd)
+    {
+        MEMFreeToDefaultHeap(pClient);
+        return 0;
+    }
+
+    // calculate path length for SD access of RPL
+    int path_len = strlen(CAFE_OS_SD_PATH) + strlen(SD_GAMES_PATH) + strlen(GAME_DIR_NAME) + strlen(RPX_RPL_PATH) + strlen(rpl_entry->name) + 3;
+    char *path_rpl = MEMAllocFromDefaultHeap(path_len);
+    if(!path_rpl) {
+        MEMFreeToDefaultHeap(pCmd);
+        MEMFreeToDefaultHeap(pClient);
+        return 0;
+    }
+    // create path
+    __os_snprintf(path_rpl, path_len, "%s%s/%s%s/%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, GAME_DIR_NAME, RPX_RPL_PATH, rpl_entry->name);
+
+    // malloc mem for read file
+    unsigned char* dataBuf = (unsigned char*)MEMAllocFromDefaultHeapEx(0x1000, 0x40);
+    if(!dataBuf) {
+        MEMFreeToDefaultHeap(pCmd);
+        MEMFreeToDefaultHeap(pClient);
+        MEMFreeToDefaultHeap(path_rpl);
+        return 0;
+    }
+
+    // do more initial FS stuff
+    FSInitCmdBlock(pCmd);
+    FSAddClientEx(pClient, 0, FS_RET_NO_ERROR);
+
+    // set RPL size to 0 to avoid wrong RPL being loaded when opening file fails
+    rpl_entry->size = 0;
+    rpl_entry->offset = 0;
+
+    int fd = 0;
+    if (real_FSOpenFile(pClient, pCmd, path_rpl, "r", &fd, FS_RET_ALL_ERROR) == FS_STATUS_OK)
+    {
+        int ret;
+        int rpl_size = 0;
+
+        // Get current memory area
+        s_mem_area* mem_area    = (s_mem_area*)(MEM_AREA_ARRAY);
+        int mem_area_addr_start = mem_area->address;
+        int mem_area_addr_end   = mem_area->address + mem_area->size;
+        int mem_area_offset     = 0;
+
+        // Copy rpl in memory
+        while ((ret = FSReadFile(pClient, pCmd, dataBuf, 0x1, 0x1000, fd, 0, FS_RET_ALL_ERROR)) > 0)
+        {
+            // Copy in memory and save offset
+            for (int j = 0; j < ret; j++)
+            {
+                if ((mem_area_addr_start + mem_area_offset) >= mem_area_addr_end)
+                {
+                    // Set next memory area
+                    mem_area            = mem_area->next;
+                    mem_area_addr_start = mem_area->address;
+                    mem_area_addr_end   = mem_area->address + mem_area->size;
+                    mem_area_offset     = 0;
+                }
+                *(volatile unsigned char*)(mem_area_addr_start + mem_area_offset) = dataBuf[j];
+                mem_area_offset += 1;
+            }
+            rpl_size += ret;
+        }
+
+        // Fill rpl entry
+        rpl_entry->area = (s_mem_area*)(MEM_AREA_ARRAY);
+        rpl_entry->offset = 0;
+        rpl_entry->size = rpl_size;
+
+        // flush memory
+        // DCFlushRange((void*)rpl_entry, sizeof(s_rpx_rpl));
+        // DCFlushRange((void*)rpl_entry->address, rpl_entry->size);
+
+        if ((int)bss_ptr != 0x0a000000)
+        {
+            char buffer[200];
+            __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) file loaded 0x%08X %i", rpl_entry->name, rpl_entry->area->address, rpl_entry->size);
+            log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+        }
+
+        FSCloseFile(pClient, pCmd, fd, FS_RET_NO_ERROR);
+    }
+
+    FSDelClient(pClient);
+    MEMFreeToDefaultHeap(dataBuf);
+    MEMFreeToDefaultHeap(pCmd);
+    MEMFreeToDefaultHeap(pClient);
+    MEMFreeToDefaultHeap(path_rpl);
+    return 1;
+}
+
+/* *****************************************************************************
+ * Searching for RPL to load
  * ****************************************************************************/
 static int CheckAndLoadRPL(const char *rpl) {
     // If we are in Smash Bros app
-    if (*(volatile unsigned int *)RPX_NAME_PENDING == 0)
+    if (GAME_LAUNCHED == 0)
         return 0;
 
     // Look for rpl name in our table
-    for (int k = 1; k < (*(volatile unsigned int *)(RPX_RPL_ENTRY_COUNT)); k++)
+    s_rpx_rpl *rpl_entry = (s_rpx_rpl*)(RPX_RPL_ARRAY);
+
+    do
     {
-        s_rpx_rpl *rpl_struct = (s_rpx_rpl*)(RPX_RPL_ARRAY + k * sizeof(s_rpx_rpl));
+        if(rpl_entry->is_rpx)
+            continue;
 
         int len = strlen(rpl);
-        int len2 = strlen(rpl_struct->name);
+        int len2 = strlen(rpl_entry->name);
         if ((len != len2) && (len != (len2 - 4))) {
             continue;
         }
 
+        // compare name string case insensitive and without ".rpl" extension
         int found = 1;
         for (int x = 0; x < len; x++)
         {
-            if (toupper(rpl_struct->name[x]) != toupper(rpl[x]))
+            if (toupper(rpl_entry->name[x]) != toupper(rpl[x]))
             {
                 found = 0;
                 break;
@@ -641,82 +911,9 @@ static int CheckAndLoadRPL(const char *rpl) {
         }
 
         if (found)
-        {
-            if ((int)bss_ptr != 0x0a000000)
-            {
-                char buffer[200];
-                __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) found and loading", rpl);
-                log_string(bss.global_sock, buffer, BYTE_LOG_STR);
-            }
-
-            // initialize FS
-            FSInit();
-            FSClient *pClient = (FSClient*) MEMAllocFromDefaultHeap(sizeof(FSClient));
-            if (!pClient)
-                return 0;
-
-            FSCmdBlock *pCmd = (FSCmdBlock*) MEMAllocFromDefaultHeap(sizeof(FSCmdBlock));
-            if (!pCmd)
-            {
-                MEMFreeToDefaultHeap(pClient);
-                return 0;
-            }
-
-            // calculate path length for SD access of RPL
-            int path_len = strlen(CAFE_OS_SD_PATH) + strlen(SD_GAMES_PATH) + strlen((char *)GAME_DIR_NAME) + strlen(RPX_RPL_PATH) + strlen(rpl_struct->name) + 3;
-            char *path_rpl = MEMAllocFromDefaultHeap(path_len);
-            if(!path_rpl) {
-                MEMFreeToDefaultHeap(pCmd);
-                MEMFreeToDefaultHeap(pClient);
-                return 0;
-            }
-            // create path
-            __os_snprintf(path_rpl, path_len, "%s%s/%s%s/%s", CAFE_OS_SD_PATH, SD_GAMES_PATH, (char *)GAME_DIR_NAME, RPX_RPL_PATH, rpl_struct->name);
-
-            // do more initial FS stuff
-            FSInitCmdBlock(pCmd);
-            FSAddClientEx(pClient, 0, FS_RET_NO_ERROR);
-
-            int fd = 0;
-            if (real_FSOpenFile(pClient, pCmd, path_rpl, "r", &fd, FS_RET_ALL_ERROR) == FS_STATUS_OK)
-            {
-                // malloc mem for read file
-                unsigned char* dataBuf = (unsigned char*)MEMAllocFromDefaultHeapEx(0x1000, 0x40);
-                int ret;
-                // Copy rpl in memory : 22 MB max
-                while ((ret = FSReadFile(pClient, pCmd, dataBuf, 0x1, 0x1000, fd, 0, FS_RET_ALL_ERROR)) > 0)
-                {
-                    // Copy in memory and save offset
-                    for (int j = 0; j < ret; j++)
-                        *(volatile unsigned char*)(((unsigned int)MEM_BASE) + rpl_struct->size + j) = dataBuf[j];
-                    rpl_struct->size += ret;
-                }
-                // reset offset
-                rpl_struct->offset = 0;
-                rpl_struct->address = (int)MEM_BASE;
-
-                // flush memory
-                // DCFlushRange((void*)rpl_struct, sizeof(s_rpx_rpl));
-                // DCFlushRange((void*)rpl_struct->address, rpl_struct->size);
-
-                if ((int)bss_ptr != 0x0a000000)
-                {
-                    char buffer[200];
-                    __os_snprintf(buffer, sizeof(buffer), "CheckAndLoadRPL(%s) file loaded 0x%08X %i", rpl, rpl_struct->address, rpl_struct->size);
-                    log_string(bss.global_sock, buffer, BYTE_LOG_STR);
-                }
-
-                FSCloseFile(pClient, pCmd, fd, FS_RET_NO_ERROR);
-                MEMFreeToDefaultHeap(dataBuf);
-            }
-
-            FSDelClient(pClient);
-            MEMFreeToDefaultHeap(pCmd);
-            MEMFreeToDefaultHeap(pClient);
-            MEMFreeToDefaultHeap(path_rpl);
-            return 1;
-        }
+            return LoadRPLToMemory(rpl_entry);
     }
+    while((rpl_entry = rpl_entry->next) != 0);
 
     return 0;
 }
@@ -745,6 +942,7 @@ DECL(int, OSDynLoad_Acquire, char* rpl, unsigned int *handle, int r5 __attribute
     return result;
 }
 
+#if (USE_EXTRA_LOG_FUNCTIONS == 1)
 DECL(int, OSDynLoad_GetModuleName, unsigned int *handle, char *name_buffer, int *name_buffer_size) {
 
     int result = real_OSDynLoad_GetModuleName(handle, name_buffer, name_buffer_size);
@@ -770,13 +968,14 @@ DECL(int, OSDynLoad_IsModuleLoaded, char* rpl, unsigned int *handle, int r5 __at
 
     return result;
 }
+#endif
 
 /* *****************************************************************************
  * Log functions
  * ****************************************************************************/
 #if (USE_EXTRA_LOG_FUNCTIONS == 1)
 static void log_byte_for_client(void *pClient, char byte) {
-    int client = GetCurClientNoSD(pClient);
+    int client = GetCurClient(pClient);
     if (client != -1) {
         log_byte(bss.socket_fs[client], byte);
     }
@@ -846,6 +1045,25 @@ DECL(int, FSWriteFileWithPos_log, void *pClient, void *pCmd, const void *source,
     log_byte_for_client(pClient, BYTE_WRITE_FILE_WITH_POS);
     return real_FSWriteFileWithPos_log(pClient, pCmd, source, size, count, pos, fd, flag, error);
 }
+
+DECL(int, FSGetVolumeState_log, void *pClient) {
+    int result = real_FSGetVolumeState_log(pClient);
+
+    if ((int)bss_ptr != 0x0a000000)
+    {
+        if (result > 1)
+        {
+            int error = real_FSGetLastError_log(pClient);
+
+            char buffer[200];
+            __os_snprintf(buffer, sizeof(buffer), "FSGetVolumeState: %i, last error = %i", result, error);
+            log_string(bss.global_sock, buffer, BYTE_LOG_STR);
+        }
+    }
+
+    return result;
+}
+
 #endif
 
 /* *****************************************************************************
@@ -879,11 +1097,19 @@ struct magic_t {
     MAKE_MAGIC(FSRenameAsync),
     MAKE_MAGIC(FSRemove),
     MAKE_MAGIC(FSRemoveAsync),
+    MAKE_MAGIC(FSFlushQuota),
+    MAKE_MAGIC(FSFlushQuotaAsync),
+    MAKE_MAGIC(FSGetFreeSpaceSize),
+    MAKE_MAGIC(FSGetFreeSpaceSizeAsync),
+    MAKE_MAGIC(FSRollbackQuota),
+    MAKE_MAGIC(FSRollbackQuotaAsync),
 
     // Dynamic RPL loading functions
     MAKE_MAGIC(OSDynLoad_Acquire),
+#if (USE_EXTRA_LOG_FUNCTIONS == 1)
     MAKE_MAGIC(OSDynLoad_GetModuleName),
     MAKE_MAGIC(OSDynLoad_IsModuleLoaded),
+#endif
 
     // Log functions
 #if (USE_EXTRA_LOG_FUNCTIONS == 1)
@@ -903,5 +1129,6 @@ struct magic_t {
     MAKE_MAGIC(FSTruncateFile_log),
     MAKE_MAGIC(FSWriteFile_log),
     MAKE_MAGIC(FSWriteFileWithPos_log),
+    MAKE_MAGIC(FSGetVolumeState_log),
 #endif
 };

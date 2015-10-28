@@ -1,5 +1,6 @@
 #include "launcher.h"
 #include "elf_abi.h"
+#include "../common/common.h"
 #include "../../libwiiu/src/coreinit.h"
 #include "../../libwiiu/src/vpad.h"
 #include "../../libwiiu/src/socket.h"
@@ -215,6 +216,11 @@ void _start()
             InstallFS(&private_data);
             /* patch server IP */
             *((volatile unsigned int *)(INSTALL_FS_ADDR + 0xC1000000)) = ip_address;
+            /* Set GAME_LAUNCHED to 0 */
+            GAME_LAUNCHED = 0;
+            GAME_RPX_LOADED = 0;
+            /* Set LOADIINE mode to smash bros initially */
+            LOADIINE_MODE = LOADIINE_MODE_SMASH_BROS;
         }
 
         /* free memory allocated */
@@ -598,22 +604,6 @@ static void InstallLoader(private_data_t *private_data)
     section_offset = get_section(private_data, private_data->data_loader, ".magic", &loader_magic_len, &loader_magic_addr);
     unsigned char *loader_magic = private_data->data_loader + section_offset;
 
-    /* Patch for GetNextBounce function (loader) */
-    /* we dont want instructions to use r9/r11 registers, as it is modified by gcc prologue/epilogue when calling our functions */
-    *((volatile uint32_t *)(0xC1000000 + 0x0100b720)) = 0x3c800040; // lis r11, 0x40      (0x3d600040) => lis r4, 0x40       (0x3c800040)
-    *((volatile uint32_t *)(0xC1000000 + 0x0100b718)) = 0x7ca95214; // add r9, r9, r10    (0x7d295214) => add r5, r9, r10    (0x7ca95214)
-//  *((volatile uint32_t *)(0xC1000000 + 0x0100b728)) = 0x7c0a2040; // cmplw r10, r11     (0x7c0a5840) => cmplw r10, r4      (0x7c0a2040) // function call
-    *((volatile uint32_t *)(0xC1000000 + 0x0100b738)) = 0x90be0090; // stw r9, 0x90(r30)  (0x913e0090) => stw r5, 0x90(r30)  (0x90be0090)
-
-    *((volatile uint32_t *)(0xC1000000 + 0x0100b75c)) = 0x38800001; // li r11, 1          (0x39600001) => li r4, 1           (0x38800001)
-    *((volatile uint32_t *)(0xC1000000 + 0x0100b764)) = 0x909e0078; // stw r11, 0x78(r30) (0x917e0078) => stw r4, 0x78(r30)  (0x909e0078)
-    *((volatile uint32_t *)(0xC1000000 + 0x0100b770)) = 0x3c800040; // lis r11, 0x40      (0x3d600040) => lis r4, 0x40       (0x3c800040)
-    *((volatile uint32_t *)(0xC1000000 + 0x0100b778)) = 0x7ca95214; // add r9, r9, r10    (0x7d295214) => add r5, r9, r10    (0x7ca95214)
-//  *((volatile uint32_t *)(0xC1000000 + 0x0100b780)) = 0x7c0a2040; // cmplw r10, r11     (0x7c0a5840) => cmplw r10, r4      (0x7c0a2040) // function call
-    *((volatile uint32_t *)(0xC1000000 + 0x0100b794)) = 0x90be0090; // stw r9, 0x90(r30)  (0x913e0090) => stw r5, 0x90(r30)  (0x90be0090)
-    DCFlushRange((void*)(0xC1000000 + 0x0100b718), 0x100);
-    ICInvalidateRange((void*)(0xC1000000 + 0x0100b718), 0x100);
-
     /* Patch to bypass SDK version tests */
     *((volatile uint32_t *)(0xC1000000 + 0x010095b4)) = 0x480000a0; // ble loc_1009654    (0x408100a0) => b loc_1009654      (0x480000a0)
     *((volatile uint32_t *)(0xC1000000 + 0x01009658)) = 0x480000e8; // bge loc_1009740    (0x408100a0) => b loc_1009740      (0x480000e8)
@@ -663,19 +653,6 @@ static void InstallLoader(private_data_t *private_data)
         ICInvalidateRange((void*)(0xC1000000 + call_addr), 4);
     }
 
-    /* patch address of GetBounceNext() to do branch instead of branch link as others */
-//    *((volatile uint32_t *)(0xC1000000 + 0x0100B6B8)) &= 0x03FFFFFC;     // change from bl to b
-//    *((volatile uint32_t *)(0xC1000000 + 0x0100B6B8)) |= 0x48000000;     // change from bl to b
-//    DCFlushRange((void*)(0xC1000000 + 0x0100B6B8), 4);
-//    ICInvalidateRange((void*)(0xC1000000 + 0x0100B6B8), 4);
-//
-//    /* Patch to bypass SDK version tests */
-//    *((volatile uint32_t *)(0xC1000000 + 0x010095b4)) = 0x480000a0; // ble loc_1009654    (0x408100a0) => b loc_1009654      (0x480000a0)
-//    *((volatile uint32_t *)(0xC1000000 + 0x01009658)) = 0x480000e8; // bge loc_1009740    (0x408100a0) => b loc_1009740      (0x480000e8)
-//    DCFlushRange((void*)(0xC1000000 + 0x010095b4), 4);
-//    ICInvalidateRange((void*)(0xC1000000 + 0x010095b4), 4);
-//    DCFlushRange((void*)(0xC1000000 + 0x01009658), 4);
-//    ICInvalidateRange((void*)(0xC1000000 + 0x01009658), 4);
 }
 
 /* ****************************************************************** */
