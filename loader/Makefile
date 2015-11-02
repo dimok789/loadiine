@@ -31,7 +31,7 @@ SFLAGS := -mgekko -mregnames
 # so for now i reverted it as there is still enough space in payload
 # adding it back in will give another 600 - 1000 bytes of space
 # CFLAGS := -Os -nostdinc -nostdlib -Wall -x c -std=gnu99
-CFLAGS := -O0 -nostdinc -nostdlib -Wall -x c -std=gnu99 \
+CFLAGS := -Os -nostdinc -nostdlib -Wall -x c -std=gnu99 \
           -ffreestanding \
           -mrvl -mcpu=750 -meabi -mhard-float -fshort-wchar \
           -msdata=none -memb -ffunction-sections -fdata-sections  \
@@ -56,8 +56,8 @@ build/loader%.magic.bin: build/loader%.elf $(BUILD_REQ)
 	$(OBJCOPY) -j .magic -O binary $< $@
 
 build/loader%.elf: loader%.ld $(OBJ) $(BUILD_REQ)
-	$(LD) -T $< $(OBJ)
-#	$(LD) -T $< $(OBJ) -s -L"$(DEVKITPPC)/lib/gcc/powerpc-eabi/4.8.2" -lgcc
+#	$(LD) -T $< $(OBJ)
+	$(LD) -T $< $(OBJ) -s -L"$(DEVKITPPC)/lib/gcc/powerpc-eabi/4.8.2" -lgcc
 
 build/%.o: %.c $(BUILD_REQ)
 	$(CC) -c $(CFLAGS) -o $@ $<
