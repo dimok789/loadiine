@@ -630,9 +630,9 @@ static void InstallLoader(private_data_t *private_data)
     /* Get our functions */
     struct magic_t
     {
-        const void* func; // our replacement function which is called
-        const void* call; // address where to place the jump to our function
-        uint        orig_instr;
+        const void * repl_func;           // our replacement function which is called
+        const void * repl_addr;           // address where to place the jump to the our function
+        const unsigned int call_type;     // call type, e.g. 0x48000000 for branch and 0x48000001 for bl
     } *magic = (struct magic_t *)loader_magic;
     int magic_len = loader_magic_len / sizeof(struct magic_t);
 
@@ -641,16 +641,16 @@ static void InstallLoader(private_data_t *private_data)
     int i;
     for (i = 0; i < magic_len; i ++)
     {
-        int func_addr  = (int)magic[i].func;
-        int call_addr  = (int)magic[i].call;
-//        int orig_instr = (int)magic[i].orig_instr;
+        unsigned int repl_func  = (unsigned int)magic[i].repl_func;
+        unsigned int repl_addr  = (unsigned int)magic[i].repl_addr;
+        unsigned int call_type  = magic[i].call_type;
 
         // Install function hook only if needed
-        int jump_addr = func_addr - call_addr; // Compute jump length to jump from current instruction address to our function address
-        *((volatile uint32_t *)(0xC1000000 + call_addr)) = 0x48000001 | jump_addr; // Replace the instruction in the loader by the jump to our function
+        int jump_addr = (repl_func - repl_addr) & 0x03fffffc;                       // Compute jump length to jump from current instruction address to our function address
+        *((volatile uint32_t *)(0xC1000000 + repl_addr)) = call_type | jump_addr;   // Replace the instruction in the loader by the jump to our function
         // flush caches and invalidate instruction cache
-        DCFlushRange((void*)(0xC1000000 + call_addr), 4);
-        ICInvalidateRange((void*)(0xC1000000 + call_addr), 4);
+        DCFlushRange((void*)(0xC1000000 + repl_addr), 4);
+        ICInvalidateRange((void*)(0xC1000000 + repl_addr), 4);
     }
 
 }

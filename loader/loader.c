@@ -1,520 +1,250 @@
 #include "loader.h"
 #include "../common/common.h"
 
-// dbcf and icbi flush/invalidate 0x20 bytes but we can't be sure that our 4 bytes are all in the same block, so call it for first and last byte
-#define FlushBlock(addr)   asm volatile("dcbf %0, %1\n"                                \
-                                        "icbi %0, %1\n"                                \
-                                        "sync\n"                                       \
-                                        "eieio\n"                                      \
-                                        "isync\n"                                      \
-                                        :                                              \
-                                        :"r"(0), "r"(((addr) & ~31))                   \
-                                        :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"     \
-                                        );
+#define REPLACE_LIBOUNCEONECHUNK      0
 
-// Instruction address after LiWaitOneChunk
-#define LI_WAIT_ONE_CHUNK1_AFTER1_ADDR          (0x01009120)
-#define LI_WAIT_ONE_CHUNK1_AFTER2_ADDR          (0x01009124)
-#define LI_WAIT_ONE_CHUNK1_AFTER1_ORIG_INSTR    0x7c7f1b79 // mr. r31, r3
-#define LI_WAIT_ONE_CHUNK1_AFTER2_ORIG_INSTR    0x418201b4 // beq loc_10092d8
-#define LI_WAIT_ONE_CHUNK1_AFTER1_NEW_INSTR     0x3be00000 // li r31, 0
-#define LI_WAIT_ONE_CHUNK1_AFTER2_NEW_INSTR     0x480001b4 // b loc_10092d8
+// struct holding the globals of the loader (there are actually more but we don't need others)
+typedef struct _loader_globals_t
+{
+    int sgIsLoadingBuffer;
+    int sgFileType;
+    int sgProcId;
+    int sgGotBytes;
+    int sgFileOffset;
+    int sgBufferNumber;
+    int sgBounceError;
+    char sgLoadName[0x1000];
+} __attribute__((packed)) loader_globals_t;
 
-#define LI_WAIT_ONE_CHUNK2_AFTER1_ADDR          (0x01009300)
-#define LI_WAIT_ONE_CHUNK2_AFTER2_ADDR          (0x01009304)
-#define LI_WAIT_ONE_CHUNK2_AFTER1_ORIG_INSTR    0x7c7f1b79 // mr. r31, r3
-#define LI_WAIT_ONE_CHUNK2_AFTER2_ORIG_INSTR    0x40820078 // bne loc_100937c
-#define LI_WAIT_ONE_CHUNK2_AFTER1_NEW_INSTR     0x3be00000 // li r31, 0
-#define LI_WAIT_ONE_CHUNK2_AFTER2_NEW_INSTR     0x60000000 // nop
-
-#define LI_WAIT_ONE_CHUNK3_AFTER1_ADDR          (0x0100b6e8)
-#define LI_WAIT_ONE_CHUNK3_AFTER2_ADDR          (0x0100b6ec)
-#define LI_WAIT_ONE_CHUNK3_AFTER1_ORIG_INSTR    0x7c7f1b79 // mr. r31, r3
-#define LI_WAIT_ONE_CHUNK3_AFTER2_ORIG_INSTR    0x408200c0 // bne loc_100b7ac
-#define LI_WAIT_ONE_CHUNK3_AFTER1_NEW_INSTR     0x3be00000 // li r31, 0
-#define LI_WAIT_ONE_CHUNK3_AFTER2_NEW_INSTR     (0x48000001 | (((unsigned int)GetNextBounce_af_LiWaitOneChunk) - LI_WAIT_ONE_CHUNK3_AFTER2_ADDR))   // replace with jump to our function dynamically
-
-
+/* Common useful functions */
 static inline int toupper(int c) {
     return (c >= 'a' && c <= 'z') ? (c - 0x20) : c;
 }
 
-static void GetNextBounce_af_LiWaitOneChunk(void);
-
-/* LOADER_Start ****************************************************************
- * - instruction address = 0x01003e60
- * - original instruction = 0x5586103a : "slwi r6, r12, 2"
- * - entry point of the loader
- */
-void LOADER_Start(void)
+// Comment (Dimok):
+// we don't need to replace this function as i never seen it fail actually
+// it doesn't even fail when fileOffset is above the actually RPX/RPL fileSize
+// just in case I added this implementation if we ever want to override it
+#if REPLACE_LIBOUNCEONECHUNK
+static int LiBounceOneChunk(const char * filename, int fileType, int procId, int * hunkBytes, int fileOffset, int bufferNumber, int * dst_address)
 {
-    // Save registers
-    int r4, r6, r12;
-    asm volatile("mr %0, 4\n"
-        "mr %1, 6\n"
-        "mr %2, 12\n"
-        :"=r"(r4), "=r"(r6), "=r"(r12)
-        :
-        :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
-    );
+    unsigned int address;
+    loader_globals_t *loader_globals = (loader_globals_t*)(0xEFE19D00);
 
-    // Reset flags
-//    loader_debug_t* loader = (loader_debug_t *)DATA_ADDR;
-//    loader[0].tag = 1;
-//    loader[0].data = 0;
-//    loader[1].tag = 0;
-//    loader[1].data = 0;
+    // handle interrupts
+    LiCheckAndHandleInterrupts();
 
-    BOUNCE_FLAG_ADDR = 0;         // Bounce flag off
-    IS_ACTIVE_ADDR = 0;           // replacement off
-    MEM_OFFSET = 0;               // RPX/RPL load offset
-    MEM_AREA = 0;                 // RPX/RPL current memory area
-    MEM_PART = 0;                 // RPX/RPL part to fill (0=0xF6000000-0xF6400000, 1=0xF6400000-0xF6800000)
-    RPL_REPLACE_ADDR = 0;         // Reset
-    RPL_ENTRY_INDEX_ADDR = 0;     // Reset
-    IS_LOADING_RPX_ADDR = 1;      // Set RPX loading
+    // bufferNumber = 1 is 0xF6000000 and bufferNumber = 2 is 0xF6400000
+    if(bufferNumber == 1)
+        address = 0xF6000000;
+    else
+        address = 0xF6400000;
 
-    // Disable fs
-    if ((*(volatile unsigned int *)0xEFE00000 != RPX_CHECK_NAME) && (GAME_RPX_LOADED == 1))
-    {
-        GAME_RPX_LOADED = 0;
-        GAME_LAUNCHED = 0;
+    // if global RPX/RPL name is not copied yet do it now
+    if(loader_globals->sgLoadName[0] == 0) {
+        strncpy(loader_globals->sgLoadName, filename, sizeof(loader_globals->sgLoadName)-1);
+        loader_globals->sgLoadName[sizeof(loader_globals->sgLoadName)-1] = 0;
     }
+    // set all remaining global variables
+    loader_globals->sgFileOffset = fileOffset;
+    loader_globals->sgBufferNumber = bufferNumber;
+    loader_globals->sgFileType = fileType;
+    loader_globals->sgProcId = procId;
+    loader_globals->sgBounceError = 0;
 
-    // return properly
-    asm volatile("mr 4, %0\n"
-        "mr 6, %1\n"
-        "mr 12, %2\n"
-        :
-        :"r"(r4), "r"(r6), "r"(r12)
-        :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
-    );
-    asm volatile("slwi 6, 12, 2\n");
-}
+    // get process index for the current process ID
+    int processIndex = Loader_SysCallGetProcessIndex(procId);
+    // give the IOSU a signal to start loading data into the address asynchronously
+    int result = LiLoadAsync(filename, address, 0x400000, fileOffset, fileType, processIndex, -1);
 
-/* LOADER_Entry ****************************************************************
- * - instruction address = 0x01002938
- * - original instruction = 0x835e0000 : "lwz r26, 0(r30)"
- */
-void LOADER_Entry(void)
-{
-    // Save registers
-    int r30;
-    asm volatile("mr %0, 30\n"
-        :"=r"(r30)
-        :
-        :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
-    );
-
-    // Do our stuff
-    RPL_REPLACE_ADDR = 0;      // Reset
-    IS_LOADING_RPX_ADDR = 0;   // Set RPL loading
-
-    // Logs
-//    loader_debug_t * loader = (loader_debug_t *)DATA_ADDR;
-//    while(loader->tag != 0)
-//        loader++;
-//    loader[0].tag = 2;
-//    loader[0].data = *(volatile unsigned int *)0xEFE00000;
-//    loader[1].tag = 0;
-
-    // return properly
-    asm volatile("mr 30, %0\n"
-        "lwz 26, 0(30)\n"
-        :
-        :"r"(r30)
-        :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
-    );
-}
-
-/* LOADER_Prep *****************************************************************
- * - instruction address = 0X0100A024
- * - original instruction = 0x3f00fff9 : "lis r24, -7"
- */
-void LOADER_Prep(void)
-{
-    // Save registers
-    int r29;
-    asm volatile("mr %0, 29\n"
-        :"=r"(r29)
-        :
-        :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
-    );
-
-    // Logs
-//    loader_debug_t * loader = (loader_debug_t *)DATA_ADDR;
-//    while(loader->tag != 0)
-//        loader++;
-//    loader[0].tag = 3;
-//    loader[0].data = *(volatile unsigned int *)0xEFE00000;
-//    loader[1].tag = 0;
-
-    // Reset
-    IS_ACTIVE_ADDR = 0; // Set as inactive
-
+    // our little hack
     // If we are in Smash Bros app or Mii Maker
+    // just in case something with loading asynchron the data from IOSU fails we ignore the error (never seen it happen)
     if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (GAME_LAUNCHED == 1))
     {
-        // Check if it is an rpl we want, look for rpl name
-        char* rpl_name = (char*)(*(volatile unsigned int *)(r29 + 0x08));
-        int len = 0;
-        while (rpl_name[len])
-            len++;
+        result = 0;
+    }
 
+    // check the result
+    if(result == 0) {
+        // if no error occurs, the data hunkBytes are set to maximum possible in one bounce
+        *hunkBytes = 0x400000;
+        // the output for address is also set at this position
+        if(dst_address)
+            *dst_address = address;
+
+        // enable global flag that buffer is now loading data
+        loader_globals->sgIsLoadingBuffer = 1;
+
+        // handle interrupts again
+        LiCheckAndHandleInterrupts();
+    }
+    else {
+        // TODO comment by Dimok:
+        // here comes a lot of error handling which we skip
+    }
+
+    return result;
+}
+#endif
+
+// This function is called every time after LiBounceOneChunk.
+// It waits for the asynchronous call of LiLoadAsync for the IOSU to fill data to the RPX/RPL address
+// and return the still remaining bytes to load.
+// We override it and replace the loaded date from LiLoadAsync with our data and our remaining bytes to load.
+static int LiWaitOneChunk(unsigned int * iRemainingBytes, const char *filename, int fileType)
+{
+    unsigned int result;
+    register int core_id;
+    int remaining_bytes = 0;
+    // pointer to global variables of the loader
+    loader_globals_t *loader_globals = (loader_globals_t*)(0xEFE19D00);
+
+    // get the current core
+    asm volatile("mfspr %0, 0x3EF" : "=r" (core_id));
+
+    // Comment (Dimok):
+    // time measurement at this position for logger  -> we don't need it right now except maybe for debugging
+    //unsigned long long systemTime1 = Loader_GetSystemTime();
+
+    // get the offset of per core global variable for dynload initialized (just a simple address + (core_id * 4))
+    unsigned int gDynloadInitialized = *(volatile unsigned int*)(0xEFE13C3C + (core_id << 2));
+
+    // the data loading was started in LiBounceOneChunk() and here it waits for IOSU to finish copy the data
+    if(gDynloadInitialized != 0) {
+        result = LiWaitIopCompleteWithInterrupts(0x2160EC0, &remaining_bytes);
+
+    }
+    else {
+        result = LiWaitIopComplete(0x2160EC0, &remaining_bytes);
+    }
+
+    // Comment (Dimok):
+    // time measurement at this position for logger -> we don't need it right now except maybe for debugging
+    //unsigned long long systemTime2 = Loader_GetSystemTime();
+
+    //------------------------------------------------------------------------------------------------------------------
+    // Start of our function intrusion:
+    // After IOSU is done writing the data into the 0xF6000000/0xF6400000 address,
+    // we overwrite it with our data before setting the global flag for IsLoadingBuffer to 0
+    // Do this only if we are in Smash Bros or Mii Maker and the game was launched by our method
+    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (GAME_LAUNCHED == 1))
+    {
         s_rpx_rpl *rpl_struct = (s_rpx_rpl*)(RPX_RPL_ARRAY);
 
         do
         {
-            if(rpl_struct->is_rpx)
-                continue;
-
-            int len2 = 0;
-            while(rpl_struct->name[len2])
-                len2++;
-
-            if ((len != len2) && (len != (len2 - 4)))
+            // the argument fileType = 0 is RPX, fileType = 1 is RPL (inverse to our is_rpx)
+            if((!rpl_struct->is_rpx) != fileType)
                 continue;
 
             int found = 1;
-            for (int x = 0; x < len; x++)
+
+            // if we load RPX then the filename can't be checked as it is the Mii Maker or Smash Bros RPX name
+            // there skip the filename check for RPX
+            if(fileType == 1)
             {
-                if (toupper(rpl_struct->name[x]) != toupper(rpl_name[x]))
+                int len = strnlen(filename, 0x1000);
+                int len2 = strnlen(rpl_struct->name, 0x1000);
+                if ((len != len2) && (len != (len2 - 4)))
+                    continue;
+
+                for (int x = 0; x < len; x++)
                 {
-                    found = 0;
-                    break;
+                    if (toupper(rpl_struct->name[x]) != toupper(filename[x]))
+                    {
+                        found = 0;
+                        break;
+                    }
                 }
             }
 
             if (found)
             {
-                // Set rpl has to be added, and save entry index
-                RPL_REPLACE_ADDR = 1;
-                RPL_ENTRY_INDEX_ADDR = (unsigned int)rpl_struct;
+                unsigned int load_address = (loader_globals->sgBufferNumber == 1) ? 0xF6000000 : 0xF6400000;
 
-                // Patch the loader instruction after LiWaitOneChunk to say : yes it's ok I have data =)
-                *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK1_AFTER1_ADDR)) = LI_WAIT_ONE_CHUNK1_AFTER1_NEW_INSTR;
-                *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK1_AFTER2_ADDR)) = LI_WAIT_ONE_CHUNK1_AFTER2_NEW_INSTR;
+                // set our game RPX loaded variable for use in FS system
+                if(fileType == 0)
+                    GAME_RPX_LOADED = 1;
 
-                FlushBlock(LI_WAIT_ONE_CHUNK1_AFTER1_ADDR);
-                FlushBlock(LI_WAIT_ONE_CHUNK1_AFTER2_ADDR);
+                remaining_bytes = rpl_struct->size - loader_globals->sgFileOffset;
+                if (remaining_bytes > 0x400000)
+                    // truncate size
+                    remaining_bytes = 0x400000;
+
+                s_mem_area *mem_area    = rpl_struct->area;
+                int mem_area_addr_start = mem_area->address;
+                int mem_area_addr_end   = mem_area_addr_start + mem_area->size;
+                int mem_area_offset     = rpl_struct->offset;
+
+                // Replace rpx/rpl data
+                for (int i = 0; i < (remaining_bytes / 4); i++)
+                {
+                    if ((mem_area_addr_start + mem_area_offset) >= mem_area_addr_end) // TODO: maybe >, not >=
+                    {
+                        mem_area            = mem_area->next;
+                        mem_area_addr_start = mem_area->address;
+                        mem_area_addr_end   = mem_area_addr_start + mem_area->size;
+                        mem_area_offset     = 0;
+                    }
+                    *(volatile unsigned int *)(load_address + (i * 4)) = *(volatile unsigned int *)(mem_area_addr_start + mem_area_offset);
+                    mem_area_offset += 4;
+                }
+
+                rpl_struct->area = mem_area;
+                rpl_struct->offset = mem_area_offset;
+                // set result to 0 -> "everything OK"
+                result = 0;
                 break;
             }
         }
         while((rpl_struct = rpl_struct->next) != 0);
     }
-
-    // return properly
-    asm volatile("lis 24, -7\n"
-        "lis 23, -0x1020\n"
-        "lwzu 4, 0x1000(23)\n"
-        "mr 29, %0\n"
-        :
-        :"r"(r29)
-        :"memory", "ctr", "lr", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "12"
-    );
-}
-
-/* LiLoadRPLBasics_bef_LiWaitOneChunk ******************************************
- * - instruction address = 0x01009118
- * - original instruction = 0x809d0010 : "lwz r4, 0x10(r29)"
- */
-void LiLoadRPLBasics_bef_LiWaitOneChunk(void)
-{
-    // save registers
-    int r29, r3;
-    asm("mr %0, 29\n"
-        "mr %1, 3\n"
-        :"=r"(r29), "=r"(r3)
-        :
-        :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
-    );
-
-    // If we are in Smash Bros app
-    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (GAME_LAUNCHED == 1))
+    // check if the game was left back to system menu after a game was launched by our method and reset our flags for game launch
+    else if (*(volatile unsigned int*)0xEFE00000 != RPX_CHECK_NAME && (GAME_LAUNCHED == 1) && (GAME_RPX_LOADED == 1))
     {
-        s_rpx_rpl *entry = 0;
-
-        if (RPL_REPLACE_ADDR == 1)
-        {
-            entry = (s_rpx_rpl *)(RPL_ENTRY_INDEX_ADDR);
-        }
-        else if (IS_LOADING_RPX_ADDR == 1)
-        {
-            entry = (s_rpx_rpl*)(RPX_RPL_ARRAY);
-
-            while(entry)
-            {
-                if(entry->is_rpx)
-                    break;
-
-                entry = entry->next;
-            }
-        }
-
-        if (entry)
-        {
-            // Get rpx/rpl entry
-            int size = entry->size;
-            if (size > 0x400000)
-                size = 0x400000;
-            // save stack pointer of RPX/RPL size for later use in LiLoadRPLBasics_in_1_load
-            *(volatile unsigned int*)(r3) = size;
-            RPX_SIZE_POINTER_1 = r3;
-        }
+        GAME_RPX_LOADED = 0;
+        GAME_LAUNCHED = 0;
     }
+    // end of our little intrusion into this function
+    //------------------------------------------------------------------------------------------------------------------
 
-    // return properly
-    asm("mr 29, %0\n"
-        "lwz 4, 0x10(29)\n"
-        :
-        :"r"(r29)
-        :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
-    );
-}
+    // set the result to the global bounce error variable
+    loader_globals->sgBounceError = result;
+    // disable global flag that buffer is still loaded by IOSU
+    loader_globals->sgIsLoadingBuffer = 0;
 
-/* LiLoadRPLBasics_in_1_load ***************************************************
- * - instruction address = 0x010092E4
- * - original instruction = 0x7EE3BB78 : "mr r3, r23"
- * - The first portion of the rpx is retrieve here, so we replace the first part of rpx here
- */
-void LiLoadRPLBasics_in_1_load(void)
-{
-    // save registers
-    int r23, r29;
-    asm volatile(
-        "mr %0, 23\n"
-        "mr %1, 29\n"
-        :"=r"(r23), "=r"(r29)
-        :
-        :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
-    );
-
-    // If we are in Smash Bros app
-    if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (GAME_LAUNCHED == 1))
-    {
-        // Check if it is an rpx, look for rpx name, if it is rpl, it is already marked
-        int is_rpx = 0;
-        s_rpx_rpl * rpx_rpl_entry = 0;
-
-        // Check if rpl is already marked
-        if (RPL_REPLACE_ADDR == 1)
-        {
-            rpx_rpl_entry = (s_rpx_rpl *) (RPL_ENTRY_INDEX_ADDR);
-
-            // Restore original instruction after LiWaitOneChunk
-            *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK1_AFTER1_ADDR)) = LI_WAIT_ONE_CHUNK1_AFTER1_ORIG_INSTR;
-            *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK1_AFTER2_ADDR)) = LI_WAIT_ONE_CHUNK1_AFTER2_ORIG_INSTR;
-
-            // Set new instructions
-            *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER1_ADDR)) = LI_WAIT_ONE_CHUNK2_AFTER1_NEW_INSTR;
-            *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK2_AFTER2_ADDR)) = LI_WAIT_ONE_CHUNK2_AFTER2_NEW_INSTR;
-
-            FlushBlock(LI_WAIT_ONE_CHUNK1_AFTER1_ADDR);
-            FlushBlock(LI_WAIT_ONE_CHUNK1_AFTER2_ADDR);
-            FlushBlock(LI_WAIT_ONE_CHUNK2_AFTER1_ADDR);
-            FlushBlock(LI_WAIT_ONE_CHUNK2_AFTER2_ADDR);
+    // check result for errors
+    if(result == 0) {
+        // the remaining size is set globally and in stack variable only
+        // if a pointer was passed to this function
+        if(iRemainingBytes) {
+            loader_globals->sgGotBytes = remaining_bytes;
+            *iRemainingBytes = remaining_bytes;
         }
-        else
-        {
-            for (int i = 0x100; i < 0x4000; i++)
-            {
-                int val = *(volatile unsigned int *)(0xF6000000 + i);
-                if (val == 0x2e727078) // ".rpx"
-                {
-                    is_rpx = 1;
-                    rpx_rpl_entry = (s_rpx_rpl*)(RPX_RPL_ARRAY);
-                    while(rpx_rpl_entry)
-                    {
-                        if(rpx_rpl_entry->is_rpx)
-                            break;
-
-                        rpx_rpl_entry = rpx_rpl_entry->next;
-                    }
-                    break;
-                }
-            }
-        }
-
-        // Copy RPX/RPL
-        if (rpx_rpl_entry)
-        {
-            // Copy rpx
-            s_mem_area *mem_area    = rpx_rpl_entry->area;
-            int mem_area_addr_start = mem_area->address;
-            int mem_area_addr_end   = mem_area_addr_start + mem_area->size;
-            int mem_area_offset     = rpx_rpl_entry->offset;
-            int size                = rpx_rpl_entry->size;
-            if (size >= 0x400000) // TODO: put only > not >=
-            {
-                // truncate size
-                size = 0x400000;
-
-                // Patch the loader instruction after LiWaitOneChunk (in GetNextBounce)
-                *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK3_AFTER1_ADDR)) = LI_WAIT_ONE_CHUNK3_AFTER1_NEW_INSTR;
-                *((volatile unsigned int*)(0xC1000000 + LI_WAIT_ONE_CHUNK3_AFTER2_ADDR)) = LI_WAIT_ONE_CHUNK3_AFTER2_NEW_INSTR;
-
-                FlushBlock(LI_WAIT_ONE_CHUNK3_AFTER1_ADDR);
-                FlushBlock(LI_WAIT_ONE_CHUNK3_AFTER2_ADDR);
-            }
-            else
-            {
-                RPL_REPLACE_ADDR = 0;
-            }
-
-            // Replace rpx/rpl data
-            for (int i = 0; i < (size / 4); i++)
-            {
-                if ((mem_area_addr_start + mem_area_offset) >= mem_area_addr_end) // TODO: maybe >, not >=
-                {
-                    mem_area            = mem_area->next;
-                    mem_area_addr_start = mem_area->address;
-                    mem_area_addr_end   = mem_area_addr_start + mem_area->size;
-                    mem_area_offset     = 0;
-                }
-                *(volatile unsigned int *)(0xF6000000 + i * 4) = *(volatile unsigned int *)(mem_area_addr_start + mem_area_offset);
-                mem_area_offset += 4;
-            }
-
-            // Reduce size and set offset
-            MEM_SIZE    = rpx_rpl_entry->size - size;
-            MEM_AREA    = (int)mem_area;
-            MEM_OFFSET  = mem_area_offset;
-            MEM_PART    = 1;
-
-            // get the stack pointer of the upper calling function and set the correct size directly into stack variables
-            unsigned int rpx_size_ptr = RPX_SIZE_POINTER_1;
-            *(volatile unsigned int *)rpx_size_ptr = size;
-            *(volatile unsigned int*)(r29 + 0x20) = size;
-
-            // If rpx/rpl size is less than 0x400000 bytes, we need to stop here
-            if (is_rpx)
-            {
-                // Set rpx name as active for FS to replace file from sd card
-                GAME_RPX_LOADED = 1;
-            }
-
-            // Replacement ON
-            IS_ACTIVE_ADDR = 1;
-        }
+        // Comment (Dimok):
+        // calculate time difference and print it on logging how long the wait for asynchronous data load took
+        // something like (systemTime2 - systemTime1) * constant / bus speed, did not look deeper into it as we don't need that crap
     }
-
-    // return properly
-    asm("mr 3, %0\n"
-        :
-        :"r"(r23)
-        :"memory", "ctr", "lr", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"
-    );
-}
-
-/* GetNextBounce_bef_LiWaitOneChunk ********************************************
- * - instruction address = 0x0100B6E0
- * - original instruction = 0x91010008 : "stw r8, 0x18+var_10(r1)"
- */
-unsigned int GetNextBounce_bef_LiWaitOneChunk(unsigned int rpx_size_ptr)
-{
-    // save the stack pointer of the above function for later use after LiWaitOneChunk is complete
-    RPX_SIZE_POINTER_2 = rpx_size_ptr;
-    *(volatile unsigned int*)rpx_size_ptr = 0;
-    return rpx_size_ptr;
-}
-
-/* GetNextBounce_af_LiWaitOneChunk ********************************************
- * This function is called dynamically when RPL/RPX >= 0x400000 are loaded.
- * This function is also patched dynamically and is not called for unknown RPLs/RPXs.
- * - instruction address = 0x0100B6EC
- * - original instruction = 0x408200C0 : "bne loc_100B7AC"
- */
-static void GetNextBounce_af_LiWaitOneChunk(void)
-{
-    // If it is active
-    int is_active = IS_ACTIVE_ADDR;
-    if (is_active)
-    {
-        unsigned int rpx_size_ptr = RPX_SIZE_POINTER_2;
-        // Check if we need to adjust the read size and offset
-        int size = MEM_SIZE;
-        if (size > 0x400000)
-            size = 0x400000;
-
-        // get stack pointer stored before calling LiWaitOneChunk and store the remaining size in it
-        *(volatile unsigned int *)(rpx_size_ptr) = size;
-        BOUNCE_FLAG_ADDR = 1; // Bounce flag on
+    else {
+        // Comment (Dimok):
+        // a lot of error handling here. depending on error code sometimes calls Loader_Panic() -> we don't make errors so we can skip that part ;-P
     }
+    return result;
 }
 
-/* LiRefillBounceBufferForReading_af_getbounce *********************************
- * - instruction address = 0x0100BA28
- * - original instruction = 0x2C030000 : "cmpwi r3, 0"
- */
-void LiRefillBounceBufferForReading_af_getbounce(void)
-{
-    // If a bounce is waiting
-    int is_bounce_flag_on = BOUNCE_FLAG_ADDR;
-    if (is_bounce_flag_on)
-    {
-        // Replace rpx/rpl data
-        int i;
-
-        // Get remaining size of rpx/rpl to copy and truncate it to 0x400000 bytes
-        int size = MEM_SIZE;
-        if (size > 0x400000)
-            size = 0x400000;
-
-        // Get where rpx/rpl code needs to be copied
-        int base = 0xF6000000 + (MEM_PART * 0x400000);
-
-        // Get current memory area
-        s_mem_area* mem_area    = (s_mem_area*)(MEM_AREA);
-        int mem_area_addr_start = mem_area->address;
-        int mem_area_addr_end   = mem_area_addr_start + mem_area->size;
-        int mem_area_offset     = MEM_OFFSET;
-
-        // Copy rpx/rpl data
-        for (i = 0; i < (size / 4); i++)
-        {
-            if ((mem_area_addr_start + mem_area_offset) >= mem_area_addr_end)
-            {
-                // Set new memory area
-                mem_area            = mem_area->next;
-                mem_area_addr_start = mem_area->address;
-                mem_area_addr_end   = mem_area_addr_start + mem_area->size;
-                mem_area_offset     = 0;
-            }
-            *(volatile unsigned int *)(base + i * 4) = *(volatile unsigned int *)(mem_area_addr_start + mem_area_offset);
-            mem_area_offset += 4;
-        }
-
-        // Reduce size and set offset
-        MEM_SIZE   = MEM_SIZE - size;
-        MEM_AREA   = (int)mem_area;
-        MEM_OFFSET = mem_area_offset;
-        MEM_PART   = (MEM_PART + 1) % 2;
-
-        // Bounce flag OFF
-        BOUNCE_FLAG_ADDR = 0;
-    }
-
-    // return properly
-    asm volatile("cmpwi 3, 0\n");
-}
-
+// this macro generates the the magic entry
+#define MAKE_MAGIC(x, call_type) { x, addr_ ## x, call_type}
 // A kind of magic used to store :
-// - function address
-// - address where to replace the instruction
-// - original instruction
-#define MAKE_MAGIC(x, orig_instr) { x, addr_ ## x, orig_instr}
-
-// For every replaced functions :
+// - replace instruction address
+// - replace instruction
 struct magic_t {
-    const void* func; // our replacement function which is called
-    const void* call; // address where to place the jump to the our function
-    uint        orig_instr;
-} methods[] __attribute__((section(".magic"))) = {
-    MAKE_MAGIC(LOADER_Start,                                0x5586103a),
-    MAKE_MAGIC(LOADER_Entry,                                0x835e0000),
-    MAKE_MAGIC(LOADER_Prep,                                 0x3f00fff9),
-    MAKE_MAGIC(LiLoadRPLBasics_bef_LiWaitOneChunk,          0x809d0010),
-    MAKE_MAGIC(LiLoadRPLBasics_in_1_load,                   0x7EE3BB78),
-    MAKE_MAGIC(GetNextBounce_bef_LiWaitOneChunk,            0x91010008),
-    MAKE_MAGIC(LiRefillBounceBufferForReading_af_getbounce, 0x2C030000),
+    const void * repl_func;           // our replacement function which is called
+    const void * repl_addr;           // address where to place the jump to the our function
+    const unsigned int call_type;     // call type, e.g. 0x48000000 for branch and 0x48000001 for branch link
+} const methods[] __attribute__((section(".magic"))) = {
+#if REPLACE_LIBOUNCEONECHUNK
+    MAKE_MAGIC(LiBounceOneChunk,                            0x48000000),      // simple branch to our function as we replace it completely and don't want LR to be replaced by bl
+#endif
+    MAKE_MAGIC(LiWaitOneChunk,                              0x48000000),      // simple branch to our function as we replace it completely and don't want LR to be replaced by bl
 };

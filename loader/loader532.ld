@@ -14,11 +14,15 @@ SECTIONS {
 }
 
 /* Instructions addresses to replace by "bl 0x????????   - instr addr    -  original instruction              	    => comment */
-PROVIDE(addr_LOADER_Start                                = 0x01003e60);  /* 0x5586103a : "slwi r6, r12, 2"    	    => called for rpx */
-PROVIDE(addr_LOADER_Entry                                = 0x01002938);  /* 0x835e0000 : "lwz r26, 0(r30)"    	    => called for rpl */
-PROVIDE(addr_LOADER_Prep                                 = 0x0100A024);  /* 0x3f00fff9 : "lis r24, -7"        	    => called for rpl */
-PROVIDE(addr_LiLoadRPLBasics_bef_LiWaitOneChunk          = 0x01009118);  /* 0x809d0010 : "lwz r4, 0x10(r29)"  	    => */
-PROVIDE(addr_LiLoadRPLBasics_in_1_load                   = 0x010092E4);  /* 0x7EE3BB78 : "mr r3, r23"         	    => load first chunk of rpx/rpl data, max size 0x400000 */
-PROVIDE(addr_LiSetupOneRPL_after                         = 0x0100CDC0);  /* 0x7FC3F378 : "mr r3, r30"        	    => */
-PROVIDE(addr_GetNextBounce_bef_LiWaitOneChunk            = 0x0100B6E0);  /* 0x91010008 : "stw r8, 0x18+var_10(r1)"  => instruction is originaly "cmplw r10, r11", it is replaced completely and the store to stack variable is done within function */
-PROVIDE(addr_LiRefillBounceBufferForReading_af_getbounce = 0x0100BA28);  /* 0x2C030000 : "cmpwi r3, 0"        	    => replace other rpx/rpl data chunks */
+/* This are the real functions that are used for our purpose */ 
+PROVIDE(LiWaitIopComplete                                = 0x0100FFA4);
+PROVIDE(LiWaitIopCompleteWithInterrupts                  = 0x0100FE90);
+PROVIDE(LiCheckAndHandleInterrupts                       = 0x010046B0);
+PROVIDE(Loader_SysCallGetProcessIndex                    = 0x010000A8);
+PROVIDE(LiLoadAsync                                      = 0x0101005C);
+PROVIDE(strncpy                                          = 0x01010690);
+PROVIDE(strnlen                                          = 0x010106E0);
+
+/* This are just addresses to the real functions which we only need as reference */
+PROVIDE(addr_LiWaitOneChunk                              = 0x010007EC);
+PROVIDE(addr_LiBounceOneChunk                            = 0x010003B0);
