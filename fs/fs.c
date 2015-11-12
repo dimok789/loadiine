@@ -12,6 +12,7 @@
 /* Prototypes */
 int FSAddClientEx(void *r3, void *r4, void *r5);
 int FSDelClient(void *pClient);
+int FSCloseDir_log(void *pClient, void *pCmd, int fd, int error);
 
 /* Log functions */
 //static const struct {
@@ -68,6 +69,7 @@ static int client_num_alloc(void *pClient) {
 static void client_num_free(int client) {
     bss.pClient_fs[client] = 0;
 }
+
 static int client_num(void *pClient) {
     int i;
     for (i = 0; i < MAX_CLIENT; i++)
@@ -151,7 +153,7 @@ static void compute_new_path(char* new_path, char* path, int len, int is_save) {
     // In case the path does not start with "/" set an offset for all the accesses
 	if(path[0] != '/')
 		path_offset = -1;
-
+	
     if (!is_save) {
         for (n = 0; n < sizeof(bss.mount_base) && bss.mount_base[n] != 0; n++) {
             new_path[n] = bss.mount_base[n];
@@ -173,36 +175,14 @@ static void compute_new_path(char* new_path, char* path, int len, int is_save) {
         for (n = 0; n < sizeof(bss.save_base) && bss.save_base[n] != 0; n++)
             new_path[n] = bss.save_base[n];
         new_path[n++] = '/';
-
-        // Create path for common and user dirs
-        if (path[10 + path_offset] == 'c') // common dir ("common")
-        {
-            new_path[n++] = 'c';
-
-            // copy the save game filename now with the slash at the beginning
-            for (i = 0; i < (len - 16 - path_offset); i++) {
-                char cChar = path[16 + path_offset + i];
-                // skip double slashes
-                if((new_path[n-1] == '/') && (cChar == '/')) {
-                    continue;
-                }
-                new_path[n++] = cChar;
-            }
-        }
-        else if (path[10 + path_offset] == '8') // user dir ("800000??") ?? = user permanent id
-        {
-            new_path[n++] = 'u';
-
-            // copy the save game filename now with the slash at the beginning
-            for (i = 0; i < (len - 18 - path_offset); i++) {
-               char cChar = path[18 + path_offset + i];
-                // skip double slashes
-                if((new_path[n-1] == '/') && (cChar == '/')) {
-                    continue;
-                }
-                new_path[n++] = cChar;
-            }
-        }
+		for (i = 0; i < (len - 10 - path_offset); i++) {
+			char cChar = path[10 + path_offset + i];
+			// skip double slashes
+			if((new_path[n-1] == '/') && (cChar == '/')) {
+				continue;
+			}
+			new_path[n++] = cChar;
+		}      
         new_path[n++] = '\0';
     }
 }
@@ -220,7 +200,6 @@ static int GetCurClient(void *pClient) {
 /* *****************************************************************************
  * Base functions
  * ****************************************************************************/
-
 
 DECL(int, FSInit, void) {
     if ((int)bss_ptr == 0x0a000000) {
@@ -254,12 +233,13 @@ DECL(int, FSInit, void) {
 
         FSInitCmdBlock(pCmd);
         FSAddClientEx(pClient, 0, FS_RET_NO_ERROR);
-
+		
         fs_mount_sd(bss.global_sock, pClient, pCmd);
-        
+        on_start(pClient,pCmd);
+		
         FSDelClient(pClient);
         MEMFreeToDefaultHeap(pCmd);
-        MEMFreeToDefaultHeap(pClient);
+        MEMFreeToDefaultHeap(pClient);		
         
         return result;
     }
@@ -272,21 +252,6 @@ DECL(int, FSShutdown, void) {
     return real_FSShutdown();
 }
 
-DECL(int, FSAddClientEx, void *r3, void *r4, void *r5) {
-    int res = real_FSAddClientEx(r3, r4, r5);
-
-    if ((int)bss_ptr != 0x0a000000 && res >= 0) {
-        if (GAME_RPX_LOADED != 0) {
-            int client = client_num_alloc(r3);
-            if (client >= 0) {
-                if (fs_connect(&bss.socket_fs[client]) != 0)
-                    client_num_free(client);
-            }
-        }
-    }
-
-    return res;
-}
 DECL(int, FSDelClient, void *pClient) {
     if ((int)bss_ptr != 0x0a000000) {
         int client = client_num(pClient);
@@ -298,6 +263,21 @@ DECL(int, FSDelClient, void *pClient) {
 
     return real_FSDelClient(pClient);
 }
+
+DECL(int, FSAddClientEx, void *pClient, void *r4, void *r5) {
+    int res = real_FSAddClientEx(pClient, r4, r5);
+	if ((int)bss_ptr != 0x0a000000 && res >= 0) {	
+        if (GAME_RPX_LOADED != 0) {
+			int client = client_num_alloc(pClient);
+			if (client >= 0) {
+				if (fs_connect(&bss.socket_fs[client]) != 0)
+					client_num_free(client);				
+			}
+		}
+    }
+    return res;
+}
+
 
 // TODO: make new_path dynamically allocated from heap and not on stack to avoid stack overflow on too long names
 // int len = strlen(path) + (is_save ? (strlen(bss.save_base) + 8) : strlen(bss.mount_base));
@@ -1068,6 +1048,70 @@ DECL(int, FSGetVolumeState_log, void *pClient) {
 }
 
 #endif
+
+ 
+ /* *****************************************************************************
+ * function called from the hook 
+ * ****************************************************************************/
+void on_start(void * pClient,void * pCmd){	
+	if ((int)bss_ptr != 0x0a000000 && !bss.saveChecked) {	
+		if (GAME_RPX_LOADED != 0) {
+			log_string(bss.global_sock, "CHECKING THE SAVE FOLDER STRUCTURE", BYTE_LOG_STR);
+			checkSaveFolder(pClient,pCmd,0);
+			bss.saveChecked = 1;
+		}
+	}
+}
+
+/* *****************************************************************************
+ * Create save folder
+ * ****************************************************************************/
+void checkSaveFolder(void * pClient,void * pCmd,int handle){	
+	int client = GetCurClient(pClient);
+	unsigned int nn_act_handle;
+	unsigned long (*GetPersistentIdEx)(unsigned char);
+	int (*GetSlotNo)(void);
+	void (*nn_Initialize)(void);
+	void (*nn_Finalize)(void);
+	OSDynLoad_Acquire("nn_act.rpl", &nn_act_handle,0);
+	OSDynLoad_FindExport(nn_act_handle, 0, "GetPersistentIdEx__Q2_2nn3actFUc", &GetPersistentIdEx);
+	OSDynLoad_FindExport(nn_act_handle, 0, "GetSlotNo__Q2_2nn3actFv", &GetSlotNo);
+	OSDynLoad_FindExport(nn_act_handle, 0, "Initialize__Q2_2nn3actFv", &nn_Initialize);
+	OSDynLoad_FindExport(nn_act_handle, 0, "Finalize__Q2_2nn3actFv", &nn_Finalize);
+	
+	log_string(bss.socket_fs[client], "TRYING TO GET PERSISTENT ID", BYTE_LOG_STR);
+	
+	nn_Initialize(); // To be sure that it is really Initialized
+	
+	unsigned char slotno = GetSlotNo();
+	long idlong = GetPersistentIdEx(slotno);
+	
+	if(idlong >= 0x80000000 && idlong <= 0x90000000 ){
+		char savepath[strlen(CAFE_OS_SD_PATH)+strlen(SD_SAVES_PATH)+1+strlen((char *)GAME_DIR_NAME)+1+8+1];
+		log_string(bss.socket_fs[client], "SUCCESS", BYTE_LOG_STR);
+		__os_snprintf(savepath, sizeof(savepath), "%s%s/%s/%08x", CAFE_OS_SD_PATH, SD_SAVES_PATH, (char *)GAME_DIR_NAME,idlong);	
+		log_string(bss.socket_fs[client], savepath, BYTE_LOG_STR);
+		log_string(bss.socket_fs[client], "CHECK IF FOLDER ALREADY EXISTS", BYTE_LOG_STR);
+		if (real_FSOpenDir(pClient, pCmd, savepath, &handle, FS_RET_ALL_ERROR) == FS_STATUS_OK) {		
+			log_string(bss.socket_fs[client], "ALREADY EXISTING", BYTE_LOG_STR);
+		    FSCloseDir_log(pClient, pCmd, handle, FS_RET_NO_ERROR);
+		}else {
+			log_string(bss.socket_fs[client], "CREATING SAVE PATH", BYTE_LOG_STR);
+			int res = 0;
+			if ((res = real_FSMakeDir(pClient, pCmd, savepath, FS_RET_ALL_ERROR)) == FS_STATUS_OK) {			
+				log_string(bss.socket_fs[client], "DONE!", BYTE_LOG_STR);				
+			}else{
+				char logbuffer[100];
+				__os_snprintf(logbuffer, sizeof(logbuffer), "real_FSMakeDir() failed with error: %d",res);
+				log_string(bss.socket_fs[client], logbuffer, BYTE_LOG_STR);
+			}
+		 }
+	}else{
+		log_string(bss.socket_fs[client], "FAILED", BYTE_LOG_STR);
+	}
+	
+	nn_Finalize(); //must be called an equal number of times to nn_Initialize
+}
 
 /* *****************************************************************************
  * Creates function pointer array

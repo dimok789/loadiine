@@ -517,7 +517,7 @@ static void CreateGameSaveDir(FSClient *pClient, FSCmdBlock *pCmd, const char *g
    path_save[path_index++] = 'e';
    path_save[path_index++] = 's';
    path_save[path_index] = '\0';
-
+	
     int dir_handler = 0;
 
    if (FSOpenDir(pClient, pCmd, path_save, &dir_handler, FS_RET_ALL_ERROR) == FS_STATUS_OK) {
@@ -538,21 +538,16 @@ static void CreateGameSaveDir(FSClient *pClient, FSCmdBlock *pCmd, const char *g
    }
    else {
 	   FSMakeDir(pClient, pCmd, path_save, FS_RET_ALL_ERROR);
-   }
-
-   // Create "_SAV/[rpx]/u" and "_SAV/[rpx]/c" folder
-   path_save[path_index++] = '/';
-   path_save[path_index] = 'u';
-   path_save[path_index + 1] = '\0';
-
-   if (FSOpenDir(pClient, pCmd, path_save, &dir_handler, FS_RET_ALL_ERROR) == FS_STATUS_OK) {
-       FSCloseDir(pClient, pCmd, dir_handler, FS_RET_NO_ERROR);
-   }
-   else {
-	   FSMakeDir(pClient, pCmd, path_save, FS_RET_ALL_ERROR);
-   }
-
-   path_save[path_index] = 'c';
+   }   
+   
+   path_save[path_index++] = '/'; 
+   path_save[path_index++] = 'c';
+   path_save[path_index++] = 'o';
+   path_save[path_index++] = 'm';
+   path_save[path_index++] = 'm';
+   path_save[path_index++] = 'o';
+   path_save[path_index++] = 'n';
+   path_save[path_index++] = '\0';
 
    if (FSOpenDir(pClient, pCmd, path_save, &dir_handler, FS_RET_ALL_ERROR) == FS_STATUS_OK) {
        FSCloseDir(pClient, pCmd, dir_handler, FS_RET_NO_ERROR);

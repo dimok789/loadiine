@@ -9,7 +9,10 @@ void *memset(void *dst, int val, int bytes);
 extern void *(* const MEMAllocFromDefaultHeapEx)(int size, int align);
 extern void *(* const MEMAllocFromDefaultHeap)(int size);
 extern void (* const MEMFreeToDefaultHeap)(void *p);
+
 #define memalign (*MEMAllocFromDefaultHeapEx)
+#define malloc (*MEMAllocFromDefaultHeap)
+#define free (*MEMFreeToDefaultHeap)
 
 /* socket.h */
 #define AF_INET         2
@@ -25,7 +28,6 @@ extern int recv(int socket, void *buffer, int size, int flags);
 
 extern void GX2WaitForVsync(void);
 
-
 struct in_addr {
     unsigned int s_addr;
 };
@@ -39,6 +41,7 @@ struct sockaddr_in {
 /* OS stuff */
 extern const long long title_id;
 extern void DCFlushRange(const void *p, unsigned int s);
+extern int OSDynLoad_FindExport(uint handle, int isdata, char *symbol, void *address);
 
 /* SDCard functions */
 extern FSStatus FSGetMountSource(void *pClient, void *pCmd, FSSourceType type, FSMountSource *source, FSRetFlag errHandling);
@@ -46,6 +49,10 @@ extern FSStatus FSMount(void *pClient, void *pCmd, FSMountSource *source, char *
 extern FSStatus FSReadFile(FSClient *pClient, FSCmdBlock *pCmd, void *buffer, int size, int count, int fd, FSFlag flag, FSRetFlag errHandling);
 extern void FSInitCmdBlock(FSCmdBlock *pCmd);
 extern FSStatus FSCloseFile(FSClient *pClient, FSCmdBlock *pCmd, int fd, int error);
+
+/* FS Functions */
+extern FSStatus FSAddClient(FSClient *pClient, FSRetFlag errHandling);
+extern void FSInitCmdBlock(FSCmdBlock *pCmd);
 
 /* Async callback definition */
 typedef void (*FSAsyncCallback)(void *pClient, void *pCmd, int result, void *context);
@@ -66,6 +73,7 @@ struct bss_t {
     volatile int lock;
     char mount_base[255];
     char save_base[255];
+	volatile int saveChecked;
 };
 
 #define bss_ptr (*(struct bss_t **)0x100000e4)
@@ -75,6 +83,9 @@ int  fs_connect(int *socket);
 void fs_disconnect(int socket);
 int  fs_mount_sd(int sock, void* pClient, void* pCmd);
 void log_string(int sock, const char* str, char byte);
+void on_start(void * pClient,void * pCmd);
+void checkSaveFolder(void * pClient,void * pCmd, int handle);
+int do_FSAddClientEx_hook_stuff(void * pClient);
 void log_byte(int sock, char byte);
 
 /* Communication bytes with the server */
@@ -140,5 +151,9 @@ void log_byte(int sock, char byte);
 #define BYTE_SAVE_REMOVE                0x5C
 
 #define BYTE_CREATE_THREAD              0x60
+
+
+/* OTHER STUFF */
+#define NO_SOCK       			-1
 
 #endif /* _FS_H */
