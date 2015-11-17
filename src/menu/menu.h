@@ -10,29 +10,15 @@
 #define MAX_GAME_ON_PAGE    11
 
 /* Main */
-extern int (* const entry_point)(int argc, char *argv[]);
-#define main (*entry_point)
+extern int (* const MiiMaker_main)(int argc, char *argv[]);
+#define main (*MiiMaker_main)
 
 /* System */
 extern void _Exit (void);
 extern void OSFatal(char* msg);
 extern void DCFlushRange(const void *addr, uint length);
-extern void *memset(void *dst, int val, int bytes);
-extern void *memcpy(void *dst, const void *src, int bytes);
-extern int *__gh_errno_ptr(void);
-#define errno (*__gh_errno_ptr())
+
 extern void GX2WaitForVsync(void);
-extern int __os_snprintf(char* s, int n, const char * format, ...);
-extern const long long title_id;
-
-/* Alloc */
-extern void *(* const MEMAllocFromDefaultHeapEx)(int size, int align);
-extern void *(* const MEMAllocFromDefaultHeap)(int size);
-extern void *(* const MEMFreeToDefaultHeap)(void *ptr);
-
-#define memalign (*MEMAllocFromDefaultHeapEx)
-#define malloc (*MEMAllocFromDefaultHeap)
-#define free (*MEMFreeToDefaultHeap)
 
 /* Libs */
 extern int OSDynLoad_Acquire(char* rpl, uint *handle);
@@ -50,6 +36,7 @@ extern uint OSScreenPutFontEx(uint bufferNum, uint posX, uint posY, const void *
 extern int VPADRead(int controller, VPADData *buffer, uint num, int *error);
 
 /* FS Functions */
+extern FSStatus FSInit(void);
 extern FSStatus FSAddClient(FSClient *pClient, FSRetFlag errHandling);
 extern void FSInitCmdBlock(FSCmdBlock *pCmd);
 extern FSStatus FSGetMountSource(FSClient *pClient, FSCmdBlock *pCmd, FSSourceType type, FSMountSource *source, FSRetFlag errHandling);

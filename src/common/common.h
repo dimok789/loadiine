@@ -33,8 +33,8 @@
 #define MEM_BASE                ((void*)0xC0800000)
 #define MEM_SIZE                (*(volatile unsigned int*)(MEM_BASE - 0x04))
 #define MEM_OFFSET              (*(volatile unsigned int*)(MEM_BASE - 0x08))
-#define MEM_AREA                (*(volatile unsigned int*)(MEM_BASE - 0x0C))
-#define MEM_PART                (*(volatile unsigned int*)(MEM_BASE - 0x10))
+#define SERVER_IP               (*(volatile unsigned int*)(MEM_BASE - 0x0C))
+#define RPX_CHECK_NAME          (*(volatile unsigned int*)(MEM_BASE - 0x10))
 #define GAME_RPX_LOADED         (*(volatile unsigned int*)(MEM_BASE - 0x14))
 #define GAME_LAUNCHED           (*(volatile unsigned int*)(MEM_BASE - 0x18))
 #define LOADIINE_MODE           (*(volatile unsigned int*)(MEM_BASE - 0x1C))      // loadiine operation mode (0 = smash bros, 1 = mii maker)
@@ -50,7 +50,7 @@
 /* RPX Name : from which app/game, our rpx is launched */
 // 0xEFE00000 contains the rpx name, 0x63726F73 => cros (for smash brox : cross_f.rpx)
 // 0xEFE00000 contains the rpx name, 0x66666C5F => ffl_ (for mii maker : ffl_app.rpx)
-#define RPX_CHECK_NAME          ( (LOADIINE_MODE == LOADIINE_MODE_MII_MAKER) ? 0x66666C5F : 0x63726F73 )
+//#define RPX_CHECK_NAME          ( (LOADIINE_MODE == LOADIINE_MODE_MII_MAKER) ? 0x66666C5F : 0x63726F73 )
 
 /* Struct used to organize empty memory areas */
 typedef struct _s_mem_area

@@ -1,53 +1,40 @@
-#include "util.h"
+#include "../common/common.h"
+#include "../fs/fs.h"
+#include "socket.h"
+#include "logger.h"
+#include "utils.h"
 
-static inline int toupper(int c) {
-    return (c >= 'a' && c <= 'z') ? (c - 0x20) : c;
-}
+int fs_mount_sd(int sock, void* pClient, void* pCmd) {
+    int is_mounted = 0;
+    char buffer[1];
 
-int strlen(const char* str) {
-    int i = 0;
-    while (str[i])
-        i++;
-    return i;
-}
-
-/* not used yet, maybe later
-int strlcpy(char *s1, const char *s2, unsigned int max_size)
-{
-    if(!s1 || !s2 || !max_size)
-        return 0;
-
-    int len = 0;
-    while(s2[len] && (len < (max_size-1)))
-    {
-        s1[len] = s2[len];
-        len++;
-    }
-    s1[len] = 0;
-    return len;
-}
-*/
-int strcasecmp(const char *s1, const char *s2) {
-    if(!s1 || !s2) {
-        return -1;
+    if (sock != -1) {
+        buffer[0] = BYTE_MOUNT_SD;
+        sendwait(sock, buffer, 1);
     }
 
-    while(*s1 && *s2)
+    // mount sdcard
+    FSMountSource mountSrc;
+    char mountPath[FS_MAX_MOUNTPATH_SIZE];
+    int status = FSGetMountSource(pClient, pCmd, FS_SOURCETYPE_EXTERNAL, &mountSrc, FS_RET_NO_ERROR);
+    if (status == FS_STATUS_OK)
     {
-        int diff = toupper(*s1) - toupper(*s2);
-        if(diff != 0) {
-            return diff;
+        status = FSMount(pClient, pCmd, &mountSrc, mountPath, sizeof(mountPath), FS_RET_UNSUPPORTED_CMD);
+        if (status == FS_STATUS_OK)
+        {
+            // set as mounted
+            is_mounted = 1;
         }
+    }
 
-        s1++;
-        s2++;
+    if (sock != -1) {
+        buffer[0] = is_mounted ? BYTE_MOUNT_SD_OK : BYTE_MOUNT_SD_BAD;
+        sendwait(sock, buffer, 1);
     }
-    int diff = toupper(*s1) - toupper(*s2);
-    if(diff != 0) {
-        return diff;
-    }
-    return 0;
+
+    return is_mounted;
 }
+
 
 static void swap(void *e1, void *e2, unsigned int length)
 {

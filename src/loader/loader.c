@@ -1,25 +1,9 @@
 #include "loader.h"
 #include "../common/common.h"
+#include "../common/loader_defs.h"
+#include "../utils/strings.h"
 
 #define REPLACE_LIBOUNCEONECHUNK      0
-
-// struct holding the globals of the loader (there are actually more but we don't need others)
-typedef struct _loader_globals_t
-{
-    int sgIsLoadingBuffer;
-    int sgFileType;
-    int sgProcId;
-    int sgGotBytes;
-    int sgFileOffset;
-    int sgBufferNumber;
-    int sgBounceError;
-    char sgLoadName[0x1000];
-} __attribute__((packed)) loader_globals_t;
-
-/* Common useful functions */
-static inline int toupper(int c) {
-    return (c >= 'a' && c <= 'z') ? (c - 0x20) : c;
-}
 
 // Comment (Dimok):
 // we don't need to replace this function as i never seen it fail actually
@@ -119,6 +103,7 @@ static int LiWaitOneChunk(unsigned int * iRemainingBytes, const char *filename, 
         result = LiWaitIopComplete(0x2160EC0, &remaining_bytes);
     }
 
+
     // Comment (Dimok):
     // time measurement at this position for logger -> we don't need it right now except maybe for debugging
     //unsigned long long systemTime2 = Loader_GetSystemTime();
@@ -127,7 +112,7 @@ static int LiWaitOneChunk(unsigned int * iRemainingBytes, const char *filename, 
     // Start of our function intrusion:
     // After IOSU is done writing the data into the 0xF6000000/0xF6400000 address,
     // we overwrite it with our data before setting the global flag for IsLoadingBuffer to 0
-    // Do this only if we are in Smash Bros or Mii Maker and the game was launched by our method
+    // Do this only if we are in the game that was launched by our method
     if (*(volatile unsigned int*)0xEFE00000 == RPX_CHECK_NAME && (GAME_LAUNCHED == 1))
     {
         s_rpx_rpl *rpl_struct = (s_rpx_rpl*)(RPX_RPL_ARRAY);
@@ -149,13 +134,8 @@ static int LiWaitOneChunk(unsigned int * iRemainingBytes, const char *filename, 
                 if ((len != len2) && (len != (len2 - 4)))
                     continue;
 
-                for (int x = 0; x < len; x++)
-                {
-                    if (toupper(rpl_struct->name[x]) != toupper(filename[x]))
-                    {
-                        found = 0;
-                        break;
-                    }
+                if(strncasecmp(filename, rpl_struct->name, len) != 0) {
+                    found = 0;
                 }
             }
 
@@ -205,7 +185,9 @@ static int LiWaitOneChunk(unsigned int * iRemainingBytes, const char *filename, 
     {
         GAME_RPX_LOADED = 0;
         GAME_LAUNCHED = 0;
+        RPX_CHECK_NAME = 0xDEADBEAF;
     }
+
     // end of our little intrusion into this function
     //------------------------------------------------------------------------------------------------------------------
 
@@ -234,17 +216,17 @@ static int LiWaitOneChunk(unsigned int * iRemainingBytes, const char *filename, 
 }
 
 // this macro generates the the magic entry
-#define MAKE_MAGIC(x, call_type) { x, addr_ ## x, call_type}
+#define MAKE_MAGIC(x, call_type) { x, addr_ ## x, call_type }
 // A kind of magic used to store :
 // - replace instruction address
 // - replace instruction
-struct magic_t {
+const struct magic_t {
     const void * repl_func;           // our replacement function which is called
     const void * repl_addr;           // address where to place the jump to the our function
     const unsigned int call_type;     // call type, e.g. 0x48000000 for branch and 0x48000001 for branch link
-} const methods[] __attribute__((section(".magic"))) = {
+} loader_methods[] __attribute__((section(".loader_magic"))) = {
 #if REPLACE_LIBOUNCEONECHUNK
-    MAKE_MAGIC(LiBounceOneChunk,                            0x48000000),      // simple branch to our function as we replace it completely and don't want LR to be replaced by bl
+    MAKE_MAGIC(LiBounceOneChunk,                            0x48000002),      // simple branch to our function as we replace it completely and don't want LR to be replaced by bl
 #endif
-    MAKE_MAGIC(LiWaitOneChunk,                              0x48000000),      // simple branch to our function as we replace it completely and don't want LR to be replaced by bl
+    MAKE_MAGIC(LiWaitOneChunk,                              0x48000002),      // simple branch to our function as we replace it completely and don't want LR to be replaced by bl
 };

@@ -1,6 +1,9 @@
 #include "fs.h"
-#include "exception_handler.h"
 #include "../common/common.h"
+#include "../utils/exception_handler.h"
+#include "../utils/logger.h"
+#include "../utils/strings.h"
+#include "../utils/utils.h"
 
 #define USE_EXTRA_LOG_FUNCTIONS   0
 
@@ -12,42 +15,6 @@
 /* Prototypes */
 int FSAddClientEx(void *r3, void *r4, void *r5);
 int FSDelClient(void *pClient);
-
-/* Log functions */
-//static const struct {
-//    const int tag;
-//    const char *name;
-//} tag_names[] = {
-//    { 1, "LOADER_Start" },
-//    { 2, "LOADER_Entry" },
-//    { 3, "LOADER_Prep" },
-//    { 4, "LiLoadRPLBasics_in_1_load" },
-//    { 5, "GetNextBounce_1" },
-//    { 6, "GetNextBounce_2" },
-//    { 7, "After_GetBounce" },
-//    { 8, "GetNextBounce result end" },
-//};
-//
-//static const char *get_name_for_tag(int tag) {
-//    int i = 0;
-//    for(i = 0; i < sizeof(tag_names) / sizeof(tag_names[0]); i++)
-//        if(tag == tag_names[i].tag)
-//            return tag_names[i].name;
-//
-//    return "unknown";
-//}
-
-/* Common useful functions */
-static inline int toupper(int c) {
-    return (c >= 'a' && c <= 'z') ? (c - 0x20) : c;
-}
-
-static int strlen(const char* path) {
-    int i = 0;
-    while (path[i])
-        i++;
-    return i;
-}
 
 /* Client functions */
 static int client_num_alloc(void *pClient) {
@@ -76,7 +43,7 @@ static int client_num(void *pClient) {
     return -1;
 }
 
-static int is_gamefile(char *path) {
+static int is_gamefile(const char *path) {
     // In case the path starts by "//" and not "/" (some games do that ... ...)
     if (path[0] == '/' && path[1] == '/')
         path = &path[1];
@@ -109,7 +76,7 @@ static int is_gamefile(char *path) {
 
     return 1;
 }
-static int is_savefile(char *path) {
+static int is_savefile(const char *path) {
 
     // In case the path starts by "//" and not "/" (some games do that ... ...)
     if (path[0] == '/' && path[1] == '/')
@@ -141,7 +108,7 @@ static int is_savefile(char *path) {
     return 1;
 }
 
-static void compute_new_path(char* new_path, char* path, int len, int is_save) {
+static void compute_new_path(char* new_path, const char* path, int len, int is_save) {
     int i, n, path_offset = 0;
 
     // In case the path starts by "//" and not "/" (some games do that ... ...)
@@ -153,9 +120,7 @@ static void compute_new_path(char* new_path, char* path, int len, int is_save) {
 		path_offset = -1;
 
     if (!is_save) {
-        for (n = 0; n < sizeof(bss.mount_base) && bss.mount_base[n] != 0; n++) {
-            new_path[n] = bss.mount_base[n];
-        }
+        n = strlcpy(new_path, bss.mount_base, sizeof(bss.mount_base));
 
         // copy the content file path with slash at the beginning
         for (i = 0; i < (len - 12 - path_offset); i++) {
@@ -170,8 +135,7 @@ static void compute_new_path(char* new_path, char* path, int len, int is_save) {
         new_path[n++] = '\0';
     }
     else {
-        for (n = 0; n < sizeof(bss.save_base) && bss.save_base[n] != 0; n++)
-            new_path[n] = bss.save_base[n];
+        n = strlcpy(new_path, bss.save_base, sizeof(bss.save_base));
         new_path[n++] = '/';
 
         // Create path for common and user dirs
@@ -216,15 +180,17 @@ static int GetCurClient(void *pClient) {
     }
     return -1;
 }
-
-/* *****************************************************************************
- * Base functions
- * ****************************************************************************/
-
+#include "../common/kernel_defs.h"
 
 DECL(int, FSInit, void) {
     if ((int)bss_ptr == 0x0a000000) {
-        bss_ptr = memalign(sizeof(struct bss_t), 0x40);
+        // allocate memory for our stuff
+        void *mem_ptr = memalign(sizeof(struct bss_t), 0x40);
+        if(!mem_ptr)
+            return real_FSInit();
+
+        // copy pointer
+        bss_ptr = mem_ptr;
         memset(bss_ptr, 0, sizeof(struct bss_t));
 
         // setup exceptions
@@ -235,8 +201,8 @@ DECL(int, FSInit, void) {
         // create game save path prefix
         __os_snprintf(bss.save_base, sizeof(bss.save_base), "%s%s/%s", CAFE_OS_SD_PATH, SD_SAVES_PATH, GAME_DIR_NAME);
 
-        fs_connect(&bss.global_sock);
-        
+        logger_connect(&bss.global_sock);
+
         // Call real FSInit
         int result = real_FSInit();
 
@@ -256,18 +222,20 @@ DECL(int, FSInit, void) {
         FSAddClientEx(pClient, 0, FS_RET_NO_ERROR);
 
         fs_mount_sd(bss.global_sock, pClient, pCmd);
-        
+
         FSDelClient(pClient);
         MEMFreeToDefaultHeap(pCmd);
         MEMFreeToDefaultHeap(pClient);
-        
+
         return result;
     }
     return real_FSInit();
 }
+
 DECL(int, FSShutdown, void) {
     if ((int)bss_ptr != 0x0a000000) {
-        fs_disconnect(bss.global_sock);
+        logger_disconnect(bss.global_sock);
+        bss.global_sock = -1;
     }
     return real_FSShutdown();
 }
@@ -279,7 +247,7 @@ DECL(int, FSAddClientEx, void *r3, void *r4, void *r5) {
         if (GAME_RPX_LOADED != 0) {
             int client = client_num_alloc(r3);
             if (client >= 0) {
-                if (fs_connect(&bss.socket_fs[client]) != 0)
+                if (logger_connect(&bss.socket_fs[client]) != 0)
                     client_num_free(client);
             }
         }
@@ -287,11 +255,12 @@ DECL(int, FSAddClientEx, void *r3, void *r4, void *r5) {
 
     return res;
 }
+
 DECL(int, FSDelClient, void *pClient) {
     if ((int)bss_ptr != 0x0a000000) {
         int client = client_num(pClient);
         if (client >= 0) {
-            fs_disconnect(bss.socket_fs[client]);
+            logger_disconnect(bss.socket_fs[client]);
             client_num_free(client);
         }
     }
@@ -304,7 +273,7 @@ DECL(int, FSDelClient, void *pClient) {
 /* *****************************************************************************
  * Replacement functions
  * ****************************************************************************/
-DECL(int, FSGetStat, void *pClient, void *pCmd, char *path, void *stats, int error) {
+DECL(int, FSGetStat, void *pClient, void *pCmd, const char *path, void *stats, int error) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -326,7 +295,7 @@ DECL(int, FSGetStat, void *pClient, void *pCmd, char *path, void *stats, int err
     return real_FSGetStat(pClient, pCmd, path, stats, error);
 }
 
-DECL(int, FSGetStatAsync, void *pClient, void *pCmd, char *path, void *stats, int error, FSAsyncParams *asyncParams) {
+DECL(int, FSGetStatAsync, void *pClient, void *pCmd, const char *path, void *stats, int error, FSAsyncParams *asyncParams) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -347,7 +316,8 @@ DECL(int, FSGetStatAsync, void *pClient, void *pCmd, char *path, void *stats, in
     return real_FSGetStatAsync(pClient, pCmd, path, stats, error, asyncParams);
 }
 
-DECL(int, FSOpenFile, void *pClient, void *pCmd, char *path, char *mode, int *handle, int error) {
+DECL(int, FSOpenFile, void *pClient, void *pCmd, const char *path, const char *mode, int *handle, int error) {
+/*
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -365,11 +335,11 @@ DECL(int, FSOpenFile, void *pClient, void *pCmd, char *path, char *mode, int *ha
             return real_FSOpenFile(pClient, pCmd, new_path, mode, handle, error);
         }
     }
-
+*/
     return real_FSOpenFile(pClient, pCmd, path, mode, handle, error);
 }
 
-DECL(int, FSOpenFileAsync, void *pClient, void *pCmd, char *path, char *mode, int *handle, int error, FSAsyncParams *asyncParams) {
+DECL(int, FSOpenFileAsync, void *pClient, void *pCmd, const char *path, const char *mode, int *handle, int error, const FSAsyncParams *asyncParams) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -389,7 +359,7 @@ DECL(int, FSOpenFileAsync, void *pClient, void *pCmd, char *path, char *mode, in
     return real_FSOpenFileAsync(pClient, pCmd, path, mode, handle, error, asyncParams);
 }
 
-DECL(int, FSOpenDir, void *pClient, void* pCmd, char *path, int *handle, int error) {
+DECL(int, FSOpenDir, void *pClient, void* pCmd, const char *path, int *handle, int error) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -409,7 +379,7 @@ DECL(int, FSOpenDir, void *pClient, void* pCmd, char *path, int *handle, int err
     return real_FSOpenDir(pClient, pCmd, path, handle, error);
 }
 
-DECL(int, FSOpenDirAsync, void *pClient, void* pCmd, char *path, int *handle, int error, FSAsyncParams *asyncParams) {
+DECL(int, FSOpenDirAsync, void *pClient, void* pCmd, const char *path, int *handle, int error, FSAsyncParams *asyncParams) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -449,7 +419,7 @@ DECL(int, FSChangeDir, void *pClient, void *pCmd, char *path, int error) {
     return real_FSChangeDir(pClient, pCmd, path, error);
 }
 
-DECL(int, FSChangeDirAsync, void *pClient, void *pCmd, char *path, int error, FSAsyncParams *asyncParams) {
+DECL(int, FSChangeDirAsync, void *pClient, void *pCmd, const char *path, int error, FSAsyncParams *asyncParams) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -470,7 +440,7 @@ DECL(int, FSChangeDirAsync, void *pClient, void *pCmd, char *path, int error, FS
 }
 
 // only for saves on sdcard
-DECL(int, FSMakeDir, void *pClient, void *pCmd, char *path, int error) {
+DECL(int, FSMakeDir, void *pClient, void *pCmd, const char *path, int error) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -493,7 +463,7 @@ DECL(int, FSMakeDir, void *pClient, void *pCmd, char *path, int error) {
 }
 
 // only for saves on sdcard
-DECL(int, FSMakeDirAsync, void *pClient, void *pCmd, char *path, int error, FSAsyncParams *asyncParams) {
+DECL(int, FSMakeDirAsync, void *pClient, void *pCmd, const char *path, int error, FSAsyncParams *asyncParams) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -516,7 +486,7 @@ DECL(int, FSMakeDirAsync, void *pClient, void *pCmd, char *path, int error, FSAs
 }
 
 // only for saves on sdcard
-DECL(int, FSRename, void *pClient, void *pCmd, char *oldPath, char *newPath, int error) {
+DECL(int, FSRename, void *pClient, void *pCmd, const char *oldPath, const char *newPath, int error) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -547,7 +517,7 @@ DECL(int, FSRename, void *pClient, void *pCmd, char *oldPath, char *newPath, int
 }
 
 // only for saves on sdcard
-DECL(int, FSRenameAsync, void *pClient, void *pCmd, char *oldPath, char *newPath, int error, FSAsyncParams *asyncParams) {
+DECL(int, FSRenameAsync, void *pClient, void *pCmd, const char *oldPath, const char *newPath, int error, FSAsyncParams *asyncParams) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -578,7 +548,7 @@ DECL(int, FSRenameAsync, void *pClient, void *pCmd, char *oldPath, char *newPath
 }
 
 // only for saves on sdcard
-DECL(int, FSRemove, void *pClient, void *pCmd, char *path, int error) {
+DECL(int, FSRemove, void *pClient, void *pCmd, const char *path, int error) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -601,7 +571,7 @@ DECL(int, FSRemove, void *pClient, void *pCmd, char *path, int error) {
 }
 
 // only for saves on sdcard
-DECL(int, FSRemoveAsync, void *pClient, void *pCmd, char *path, int error, FSAsyncParams *asyncParams) {
+DECL(int, FSRemoveAsync, void *pClient, void *pCmd, const char *path, int error, FSAsyncParams *asyncParams) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -623,7 +593,7 @@ DECL(int, FSRemoveAsync, void *pClient, void *pCmd, char *path, int error, FSAsy
     return real_FSRemoveAsync(pClient, pCmd, path, error, asyncParams);
 }
 
-DECL(int, FSFlushQuota, void *pClient, void *pCmd, char* path, int error) {
+DECL(int, FSFlushQuota, void *pClient, void *pCmd, const char* path, int error) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -647,7 +617,7 @@ DECL(int, FSFlushQuota, void *pClient, void *pCmd, char* path, int error) {
     }
     return real_FSFlushQuota(pClient, pCmd, path, error);
 }
-DECL(int, FSFlushQuotaAsync, void *pClient, void *pCmd, char *path, int error, FSAsyncParams *asyncParams) {
+DECL(int, FSFlushQuotaAsync, void *pClient, void *pCmd, const char *path, int error, FSAsyncParams *asyncParams) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -672,7 +642,7 @@ DECL(int, FSFlushQuotaAsync, void *pClient, void *pCmd, char *path, int error, F
     return real_FSFlushQuotaAsync(pClient, pCmd, path, error, asyncParams);
 }
 
-DECL(int, FSGetFreeSpaceSize, void *pClient, void *pCmd, char *path, uint64_t *returnedFreeSize, int error) {
+DECL(int, FSGetFreeSpaceSize, void *pClient, void *pCmd, const char *path, uint64_t *returnedFreeSize, int error) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -696,7 +666,7 @@ DECL(int, FSGetFreeSpaceSize, void *pClient, void *pCmd, char *path, uint64_t *r
     }
     return real_FSGetFreeSpaceSize(pClient, pCmd, path, returnedFreeSize, error);
 }
-DECL(int, FSGetFreeSpaceSizeAsync, void *pClient, void *pCmd, char *path, uint64_t *returnedFreeSize, int error, FSAsyncParams *asyncParams) {
+DECL(int, FSGetFreeSpaceSizeAsync, void *pClient, void *pCmd, const char *path, uint64_t *returnedFreeSize, int error, FSAsyncParams *asyncParams) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -721,7 +691,7 @@ DECL(int, FSGetFreeSpaceSizeAsync, void *pClient, void *pCmd, char *path, uint64
     return real_FSGetFreeSpaceSizeAsync(pClient, pCmd, path, returnedFreeSize, error, asyncParams);
 }
 
-DECL(int, FSRollbackQuota, void *pClient, void *pCmd, char *path, int error) {
+DECL(int, FSRollbackQuota, void *pClient, void *pCmd, const char *path, int error) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -744,7 +714,7 @@ DECL(int, FSRollbackQuota, void *pClient, void *pCmd, char *path, int error) {
     }
     return real_FSRollbackQuota(pClient, pCmd, path, error);
 }
-DECL(int, FSRollbackQuotaAsync, void *pClient, void *pCmd, char *path, int error, FSAsyncParams *asyncParams) {
+DECL(int, FSRollbackQuotaAsync, void *pClient, void *pCmd, const char *path, int error, FSAsyncParams *asyncParams) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -903,17 +873,7 @@ static int CheckAndLoadRPL(const char *rpl) {
         }
 
         // compare name string case insensitive and without ".rpl" extension
-        int found = 1;
-        for (int x = 0; x < len; x++)
-        {
-            if (toupper(rpl_entry->name[x]) != toupper(rpl[x]))
-            {
-                found = 0;
-                break;
-            }
-        }
-
-        if (found)
+        if (strncasecmp(rpl_entry->name, rpl, len) == 0)
             return LoadRPLToMemory(rpl_entry);
     }
     while((rpl_entry = rpl_entry->next) != 0);
@@ -1068,47 +1028,47 @@ DECL(int, FSGetVolumeState_log, void *pClient) {
 }
 
 #endif
-
 /* *****************************************************************************
  * Creates function pointer array
  * ****************************************************************************/
-#define MAKE_MAGIC(x) { x, my_ ## x, &real_ ## x }
+#define MAKE_MAGIC(x, orig_instr) { x, my_ ## x, &real_ ## x, orig_instr }
 
-struct magic_t {
+const struct fs_magic_t {
     const void *real;
     const void *replacement;
     const void *call;
-} methods[] __attribute__((section(".magic"))) = {
+    const unsigned int orig_instr;
+} fs_methods[] __attribute__((section(".fs_magic"))) = {
     // Common FS functions
-    MAKE_MAGIC(FSInit),
-    MAKE_MAGIC(FSShutdown),
-    MAKE_MAGIC(FSAddClientEx),
-    MAKE_MAGIC(FSDelClient),
+    MAKE_MAGIC(FSInit,                      0x7C0802A6),
+    MAKE_MAGIC(FSShutdown,                  0x4E800020),
+    MAKE_MAGIC(FSAddClientEx,               0x9421FFD8),
+    MAKE_MAGIC(FSDelClient,                 0x7C0802A6),
 
     // Replacement functions
-    MAKE_MAGIC(FSGetStat),
-    MAKE_MAGIC(FSGetStatAsync),
-    MAKE_MAGIC(FSOpenFile),
-    MAKE_MAGIC(FSOpenFileAsync),
-    MAKE_MAGIC(FSOpenDir),
-    MAKE_MAGIC(FSOpenDirAsync),
-    MAKE_MAGIC(FSChangeDir),
-    MAKE_MAGIC(FSChangeDirAsync),
-    MAKE_MAGIC(FSMakeDir),
-    MAKE_MAGIC(FSMakeDirAsync),
-    MAKE_MAGIC(FSRename),
-    MAKE_MAGIC(FSRenameAsync),
-    MAKE_MAGIC(FSRemove),
-    MAKE_MAGIC(FSRemoveAsync),
-    MAKE_MAGIC(FSFlushQuota),
-    MAKE_MAGIC(FSFlushQuotaAsync),
-    MAKE_MAGIC(FSGetFreeSpaceSize),
-    MAKE_MAGIC(FSGetFreeSpaceSizeAsync),
-    MAKE_MAGIC(FSRollbackQuota),
-    MAKE_MAGIC(FSRollbackQuotaAsync),
+    MAKE_MAGIC(FSGetStat,                   0x9421FFD8),
+    MAKE_MAGIC(FSGetStatAsync,              0x7D094378),
+    MAKE_MAGIC(FSOpenFile,                  0x9421FFD0),
+    MAKE_MAGIC(FSOpenFileAsync,             0x7C0802A6),
+    MAKE_MAGIC(FSOpenDir,                   0x9421FFD8),
+    MAKE_MAGIC(FSOpenDirAsync,              0x9421FFE0),
+    MAKE_MAGIC(FSChangeDir,                 0x7C0802A6),
+    MAKE_MAGIC(FSChangeDirAsync,            0x7C0802A6),
+    MAKE_MAGIC(FSMakeDir,                   0x7C0802A6),
+    MAKE_MAGIC(FSMakeDirAsync,              0x7C0802A6),
+    MAKE_MAGIC(FSRename,                    0x9421FFD8),
+    MAKE_MAGIC(FSRenameAsync,               0x9421FFE0),
+    MAKE_MAGIC(FSRemove,                    0x7C0802A6),
+    MAKE_MAGIC(FSRemoveAsync,               0x7C0802A6),
+    MAKE_MAGIC(FSFlushQuota,                0x7C0802A6),
+    MAKE_MAGIC(FSFlushQuotaAsync,           0x7C0802A6),
+    MAKE_MAGIC(FSGetFreeSpaceSize,          0x9421FFD8),
+    MAKE_MAGIC(FSGetFreeSpaceSizeAsync,     0x7D094378),
+    MAKE_MAGIC(FSRollbackQuota,             0x7C0802A6),
+    MAKE_MAGIC(FSRollbackQuotaAsync,        0x7C0802A6),
 
     // Dynamic RPL loading functions
-    MAKE_MAGIC(OSDynLoad_Acquire),
+    MAKE_MAGIC(OSDynLoad_Acquire,           0x38A00000),
 #if (USE_EXTRA_LOG_FUNCTIONS == 1)
     MAKE_MAGIC(OSDynLoad_GetModuleName),
     MAKE_MAGIC(OSDynLoad_IsModuleLoaded),
@@ -1135,3 +1095,29 @@ struct magic_t {
     MAKE_MAGIC(FSGetVolumeState_log),
 #endif
 };
+
+/* a buffer to place all the replaced instructions and calls to the real functions */
+const unsigned char fs_methods_calls[sizeof(fs_methods)] __attribute__((section(".fs_method_calls")));
+
+void PatchFsMethods(void)
+{
+    static uint8_t ucFsMethodsPatched = 0;
+    if(!ucFsMethodsPatched)
+    {
+        ucFsMethodsPatched = 1;
+        /* Patch branches to it. */
+        int len = sizeof(fs_methods) / sizeof(struct fs_magic_t);
+        while (len--) {
+            unsigned int real_addr = (unsigned int)fs_methods[len].real;
+            unsigned int repl_addr = (unsigned int)fs_methods[len].replacement;
+
+            unsigned int replace_instr = 0x48000002 | (repl_addr & 0x03fffffc);
+
+            if(*(volatile unsigned int *)(0xC1000000 + real_addr) != replace_instr) {
+                // in the real function, replace the "mflr r0" instruction by a jump to the replacement function
+                *(volatile unsigned int *)(0xC1000000 + real_addr) = replace_instr;
+                FlushBlock((0xC1000000 + real_addr));
+            }
+        }
+    }
+}

@@ -1,24 +1,42 @@
-OUTPUT(fs532.elf);
+OUTPUT(loadiine.elf);
 
 SECTIONS {
-	.text 0x011df800 : {
-		server_ip = .;
-		. = . + 4;
-		*(.text._start);
+	.kernel_code 0x00AE1000 : {
+		*(.kernel_code*);
+	}
+	. = .;
+	.text : {
 		*(.text*);
-		*(.magicptr*);
 	}
-	.magic : {
-		*(.magic*);
+	.menu_magic : {
+		*(.menu_magic*);
 	}
+	.loader_magic : {
+		*(.loader_magic*);
+	}
+	.fs_method_calls : {
+		*(.fs_method_calls*);
+	}
+	. = . + 0xBC000000;
 	.rodata : {
 		*(.rodata*);
+	}
+	.bss : {
+		*(.bss*);
+	}
+	.fs_magic : {
+		*(.fs_magic*);
+	}
+	.magicptr 0x011DD000 : {
+		*(.magicptr*);
 	}
 	/DISCARD/ : {
 		*(*);
 	}
 }
 
+/******************************************************** FS ********************************************************/
+/* coreinit.rpl difference in addresses 0xFE3C00 */
 /* FSA methods */
 PROVIDE(FSAInit = 0x10608ac);
 PROVIDE(FSAShutdown = 0x1060974);
@@ -29,6 +47,7 @@ PROVIDE(FSAOpenFile = 0x10621f8);
 /* FS base methods */
 PROVIDE(FSInit = 0x10683c8);
 PROVIDE(FSShutdown = 0x1068538);
+PROVIDE(FSAddClient = 0x010689fc);
 PROVIDE(FSAddClientEx = 0x10685fc);
 PROVIDE(FSDelClient = 0x1068a08);
 PROVIDE(FSInitCmdBlock = 0x01068c54);
@@ -55,9 +74,11 @@ PROVIDE(FSGetFreeSpaceSizeAsync = 0x0106c008);
 PROVIDE(FSRollbackQuota = 0x0106fc48);
 PROVIDE(FSRollbackQuotaAsync = 0x0106bb50);
 
-/* FS methods - Used by Dynamic RPL loading */
+/* FS methods - not replaced */
+PROVIDE(FSReadDir = 0x0106f780);
 PROVIDE(FSReadFile = 0x106f108);
 PROVIDE(FSCloseFile = 0x106f088);
+PROVIDE(FSCloseDir = 0x0106f700);
 
 /* FS methods - log */
 PROVIDE(FSCloseFile_log = 0x106f088);
@@ -87,6 +108,7 @@ PROVIDE(FSGetVolumeState_log = 0x01068e20);
 /* FS methods for sd card */
 PROVIDE(FSGetMountSource = 0x0106ec24);
 PROVIDE(FSMount = 0x0106ed14);
+PROVIDE(FSUnmount = 0x0106ed8c);
 
 /* GX2 methods */
 PROVIDE(GX2WaitForVsync = 0x1151964);
@@ -98,9 +120,27 @@ PROVIDE(socketclose = 0x10c2314);
 PROVIDE(connect = 0x10c0828);
 PROVIDE(send = 0x10c16ac);
 PROVIDE(recv = 0x10c0aec);
+PROVIDE(setsockopt = 0x10C2E0C);
+
+/* Standard library methods */
+PROVIDE(MEMAllocFromDefaultHeapEx = 0x1004e9c0);
+PROVIDE(MEMAllocFromDefaultHeap = 0x100b4878);
+PROVIDE(MEMFreeToDefaultHeap = 0x100b487c);
+
+/* Screen */
+PROVIDE(OSScreenInit = 0x0103a880);
+PROVIDE(OSScreenGetBufferSizeEx = 0x0103a91c);
+PROVIDE(OSScreenSetBufferEx = 0x0103a934);
+PROVIDE(OSScreenClearBufferEx = 0x0103aa90);
+PROVIDE(OSScreenFlipBuffersEx = 0x0103a9d0);
+PROVIDE(OSScreenPutFontEx = 0x0103af14);
+
+/* OS data */
+PROVIDE(title_id = 0x100136D0);
 
 /* OS methods */
 PROVIDE(OSDynLoad_Acquire = 0x0102A31C);
+PROVIDE(OSDynLoad_FindExport = 0x102b790);
 PROVIDE(OSDynLoad_IsModuleLoaded = 0x0102A504);
 PROVIDE(OSDynLoad_GetModuleName = 0x0102B960);
 PROVIDE(__os_snprintf = 0x102f09c);
@@ -108,12 +148,21 @@ PROVIDE(OSFatal = 0x1031368);
 PROVIDE(OSSetExceptionCallbackEx = 0x010443f8);
 PROVIDE(DCFlushRange = 0x1023ee8);
 
-/* Standard library methods */
-PROVIDE(memcpy = 0x1035a68);
-PROVIDE(memset = 0x1035a54);
-PROVIDE(MEMAllocFromDefaultHeapEx = 0x1004e9c0);
-PROVIDE(MEMAllocFromDefaultHeap = 0x100b4878);
-PROVIDE(MEMFreeToDefaultHeap = 0x100b487c);
+/* VPAD */
+PROVIDE(VPADRead = 0x011293d0);
 
-/* OS data */
-PROVIDE(title_id = 0x100136D0);
+/******************************************************** Menu ********************************************************/
+/* Mii Maker */
+PROVIDE(MiiMaker_main = 0x1005d180);
+
+/******************************************************* Loader *******************************************************/
+/* This are the real functions that are used for our purpose */ 
+PROVIDE(LiWaitIopComplete                                = 0x0100FFA4);
+PROVIDE(LiWaitIopCompleteWithInterrupts                  = 0x0100FE90);
+PROVIDE(LiCheckAndHandleInterrupts                       = 0x010046B0);
+PROVIDE(Loader_SysCallGetProcessIndex                    = 0x010000A8);
+PROVIDE(LiLoadAsync                                      = 0x0101005C);
+
+/* This are just addresses to the real functions which we only need as reference */
+PROVIDE(addr_LiWaitOneChunk                              = 0x010007EC);
+PROVIDE(addr_LiBounceOneChunk                            = 0x010003B0);

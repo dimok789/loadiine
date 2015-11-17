@@ -3,3 +3,5 @@
 /loader/build
 /menu/build
 /server/logs/*.txt
+/build
+/*.elf

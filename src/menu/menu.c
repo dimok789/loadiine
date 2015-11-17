@@ -1,5 +1,7 @@
 #include "menu.h"
-#include "util.h"
+#include "../utils/strings.h"
+#include "../utils/utils.h"
+#include "../utils/xml.h"
 #include "../common/common.h"
 
 /* Utils for the display */
@@ -7,16 +9,22 @@
 #define PRINT_TEXT2(x, y, _fmt, ...) { __os_snprintf(msg, 80, _fmt, __VA_ARGS__); OSScreenPutFontEx(1, x, y, msg); }
 #define BTN_PRESSED (BUTTON_LEFT | BUTTON_RIGHT | BUTTON_UP | BUTTON_DOWN | BUTTON_A | BUTTON_B | BUTTON_X)
 
+/* Function prototype to patch FS methods */
+void PatchFsMethods(void);
+
 /* Static function definitions */
 static int IsRPX(FSDirEntry *dir_entry);
-static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_entry, char *path, int path_index, int is_rpx, int entry_index);
+static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_entry, char *path, int is_rpx, int entry_index);
 static void CreateGameSaveDir(FSClient *pClient, FSCmdBlock *pCmd, const char *dir_entry, char* mount_path);
 static void GenerateMemoryAreasTable();
 static void AddMemoryArea(int start, int end, int cur_index);
 static int game_name_cmp(const void *game1, const void *game2);
 
+/* global variable for CosAppXml struct that is forced to bss section */
+ReducedCosAppXmlInfo cosAppXmlInfoStruct __attribute__((section(".bss")));
+
 /* Entry point */
-int _start(int argc, char *argv[]) {
+int Menu_Main(int argc, char *argv[]) {
     /* ****************************************************************** */
     /*                              MENU CHECK                            */
     /* ****************************************************************** */
@@ -44,7 +52,7 @@ int _start(int argc, char *argv[]) {
 
     int(*SYSRelaunchTitle)(uint argc, char* argv) = 0;
     OSDynLoad_FindExport(sysapp_handle, 0, "SYSRelaunchTitle", &SYSRelaunchTitle);
-    
+
     int(*SYSLaunchMenu)() = 0;
     OSDynLoad_FindExport(sysapp_handle, 0, "SYSLaunchMenu", &SYSLaunchMenu);
 
@@ -65,6 +73,11 @@ int _start(int argc, char *argv[]) {
     int j;
     for(j = 0; j < MAX_GAME_COUNT; j++)
         game_dir[j]     = NULL;
+
+    /* ****************************************************************** */
+    /*                         Patch FS Functions                         */
+    /* ****************************************************************** */
+    PatchFsMethods();
 
     /* ****************************************************************** */
     /*                              Init Screen                           */
@@ -110,6 +123,8 @@ int _start(int argc, char *argv[]) {
 
     if (pClient && pCmd)
     {
+        // Do an FSInit first
+        FSInit();
         // Add client to FS.
         FSAddClient(pClient, FS_RET_NO_ERROR);
 
@@ -139,7 +154,7 @@ int _start(int argc, char *argv[]) {
                     while (FSReadDir(pClient, pCmd, game_dh, &dir_entry, FS_RET_ALL_ERROR) == FS_STATUS_OK && game_count < MAX_GAME_COUNT)
                     {
                         // allocate string length + 0 termination bytes
-                        int name_len = strlen(dir_entry.name);
+                        int name_len = strnlen(dir_entry.name, 0x1000);
                         game_dir[game_count] = (char *)malloc(name_len + 1);
                         if(!game_dir[game_count])
                             continue;
@@ -166,6 +181,9 @@ int _start(int argc, char *argv[]) {
     int     return_to_home = 0;
     uint8_t ready = 0;
     int     error;
+
+    //*(volatile unsigned int *)0xBD900000 = 0xDEADBEAF;
+    //*(volatile unsigned int *)0xBD900004 = 0xDEADBABE;
 
     // sort game name pointers by name case insensitive
     qsort(game_dir, game_count, sizeof(char*), game_name_cmp);
@@ -235,9 +253,7 @@ int _start(int argc, char *argv[]) {
 
                     // Create game folder path
                     char *cur_game_dir = game_dir[game_sel];
-                    int len = 0;
-                    while (cur_game_dir[len])
-                        len++;
+                    int len = strnlen(cur_game_dir, 0x1000);
 
                     // initialize the RPL/RPX table first entry to zero + 1 byte for name zero termination
                     // just in case no RPL/RPX are found, though it wont boot then anyway
@@ -262,12 +278,12 @@ int _start(int argc, char *argv[]) {
 
                             if (is_rpx)
                             {
-                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, path_index, 1, cur_entry++);
+                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, 1, cur_entry++);
                                 CreateGameSaveDir(pClient, pCmd, game_dir[game_sel], mount_path);
                             }
                             else
                             {
-                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, path_index, 0, cur_entry++);
+                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, 0, cur_entry++);
                             }
                             if (is_okay == 0)
                                 break;
@@ -282,6 +298,10 @@ int _start(int argc, char *argv[]) {
 
                         // Close dir
                         FSCloseDir(pClient, pCmd, game_dh, FS_RET_NO_ERROR);
+
+                        if(ready){
+                            LoadXmlParameters(&cosAppXmlInfoStruct, pClient, pCmd, path, path_index);
+                        }
                     }
                 }
             }
@@ -379,7 +399,7 @@ static int IsRPX(FSDirEntry *dir_entry)
     return -1;
 }
 
-static void Add_RPX_RPL_Entry(const char *name, int size, int is_rpx, int entry_index){
+static void Add_RPX_RPL_Entry(const char *name, int size, int is_rpx, int entry_index, s_mem_area* area){
     // fill rpx/rpl entry
     s_rpx_rpl * rpx_rpl_data = (s_rpx_rpl *)(RPX_RPL_ARRAY);
     // get to last entry
@@ -389,48 +409,38 @@ static void Add_RPX_RPL_Entry(const char *name, int size, int is_rpx, int entry_
 
     // setup next entry on the previous one (only if it is not the first entry)
     if(entry_index > 0) {
-        rpx_rpl_data->next = (s_rpx_rpl *)( ((unsigned int)rpx_rpl_data) + sizeof(s_rpx_rpl) + strlen(rpx_rpl_data->name) + 1 );
+        rpx_rpl_data->next = (s_rpx_rpl *)( ((unsigned int)rpx_rpl_data) + sizeof(s_rpx_rpl) + strnlen(rpx_rpl_data->name, 0x1000) + 1 );
         rpx_rpl_data = rpx_rpl_data->next;
     }
 
     // setup current entry
-    rpx_rpl_data->area = (s_mem_area*)(MEM_AREA_ARRAY);
+    rpx_rpl_data->area = area;
     rpx_rpl_data->size = size;
     rpx_rpl_data->offset = 0;
     rpx_rpl_data->is_rpx = is_rpx;
     rpx_rpl_data->next = 0;
     // copy string length + 0 termination
-    memcpy(rpx_rpl_data->name, name, strlen(name) + 1);
+    memcpy(rpx_rpl_data->name, name, strnlen(name, 0x1000) + 1);
 
 }
 
 /* Copy_RPX_RPL */
-static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_entry, char *path, int path_index, int is_rpx, int entry_index)
+static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_entry, char *path, int is_rpx, int entry_index)
 {
     // Open rpl file
     int fd = 0;
-    char buf_mode[3] = {'r', '\0' };
     char* path_game = (char*)malloc(FS_MAX_MOUNTPATH_SIZE);
     if (!path_game)
         return 0;
 
-    // Copy path
-    memcpy(path_game, path, FS_MAX_MOUNTPATH_SIZE);
-
-    // Get rpx/rpl filename length
-    int len = strlen(dir_entry->name);
-
     // Concatenate rpl filename
-    path_game[path_index++] = '/';
-    memcpy(&(path_game[path_index]), dir_entry->name, len);
-    path_index += len;
-    path_game[path_index++] = '\0';
+    __os_snprintf(path_game, FS_MAX_MOUNTPATH_SIZE, "%s/%s", path, dir_entry->name);
 
     // For RPLs :
     if(!is_rpx)
     {
         // fill rpl entry
-        Add_RPX_RPL_Entry(dir_entry->name, 0, is_rpx, entry_index);
+        Add_RPX_RPL_Entry(dir_entry->name, 0, is_rpx, entry_index, (s_mem_area*)(MEM_AREA_ARRAY));
 
         // free path
         free(path_game);
@@ -438,7 +448,7 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
     }
 
     // For RPX : load file from sdcard and fill memory with the rpx data
-    if (FSOpenFile(pClient, pCmd, path_game, buf_mode, &fd, FS_RET_ALL_ERROR) == FS_STATUS_OK)
+    if (FSOpenFile(pClient, pCmd, path_game, "r", &fd, FS_RET_ALL_ERROR) == FS_STATUS_OK)
     {
         int cur_size = 0;
         int ret = 0;
@@ -448,6 +458,7 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
 
         // Get current memory area limits
         s_mem_area* mem_area    = (s_mem_area*)(MEM_AREA_ARRAY);
+        s_mem_area* mem_area_rpl = mem_area;
         int mem_area_addr_start = mem_area->address;
         int mem_area_addr_end   = mem_area->address + mem_area->size;
         int mem_area_offset     = 0;
@@ -472,8 +483,12 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
             cur_size += ret;
         }
 
+        if(is_rpx) {
+            RPX_CHECK_NAME = *(unsigned int*)dir_entry->name;
+        }
+
         // fill rpx entry
-        Add_RPX_RPL_Entry(dir_entry->name, cur_size, is_rpx, entry_index);
+        Add_RPX_RPL_Entry(dir_entry->name, cur_size, is_rpx, entry_index, mem_area_rpl);
 
         // close file and free memory
         FSCloseFile(pClient, pCmd, fd, FS_RET_NO_ERROR);
@@ -644,7 +659,7 @@ static void GenerateMemoryAreasTable()
         {0xB8000000 + 0x01030800, 0xB8000000 + 0x013F69A0}, // 3864 kB
         {0xB8000000 + 0x008EEC30, 0xB8000000 + 0x00B06E98}, // 2144 kB
         {0xB8000000 + 0x053B966C, 0xB8000000 + 0x058943C4}, // 4971 kB
-        {0xB8000000 + 0x04ADE370, 0xB8000000 + 0x0520EAB8}, // 7361 kB 
+        {0xB8000000 + 0x04ADE370, 0xB8000000 + 0x0520EAB8}, // 7361 kB
 
         {0, 0}
     }; // total : 66mB + 25mB
@@ -679,5 +694,19 @@ static int game_name_cmp(const void *game1, const void *game2)
     const char *game_name_1 = *((const char **)game1);
     const char *game_name_2 = *((const char **)game2);
     // compare strings case insensitive
-    return strcasecmp(game_name_1, game_name_2);
+    return strncasecmp(game_name_1, game_name_2, FS_MAX_FULLPATH_SIZE);
 }
+
+// this macro generates the the magic entry
+#define MAKE_MAGIC(x, y, call_type) { x, y, call_type }
+// A kind of magic used to store :
+// - replace instruction address
+// - replace instruction
+const struct magic_t {
+    const void * repl_func;           // our replacement function which is called
+    const unsigned int repl_addr;     // address where to place the jump to the our function
+    const unsigned int call_type;     // call type, e.g. 0x48000000 for branch and 0x48000001 for branch link
+} menu_methods[] __attribute__((section(".menu_magic"))) = {
+    /* Patch coreinit - on 5.3.2 coreinit.rpl starts at 0x101c400 */
+    { Menu_Main, 0x0101c55c, 0x48000003 },           // bla Branch Link Adress
+};

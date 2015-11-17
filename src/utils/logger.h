@@ -1,81 +1,5 @@
-#ifndef _FS_H_
-#define _FS_H_
-
-#include "../common/fs_defs.h"
-
-/* mem functions */
-void *memcpy(void *dst, const void *src, int bytes);
-void *memset(void *dst, int val, int bytes);
-extern void *(* const MEMAllocFromDefaultHeapEx)(int size, int align);
-extern void *(* const MEMAllocFromDefaultHeap)(int size);
-extern void (* const MEMFreeToDefaultHeap)(void *p);
-#define memalign (*MEMAllocFromDefaultHeapEx)
-
-/* socket.h */
-#define AF_INET         2
-#define SOCK_STREAM     1
-#define IPPROTO_TCP     6
-
-extern void socket_lib_init();
-extern int socket(int domain, int type, int protocol);
-extern int socketclose(int socket);
-extern int connect(int socket, void *addr, int addrlen);
-extern int send(int socket, const void *buffer, int size, int flags);
-extern int recv(int socket, void *buffer, int size, int flags);
-
-extern void GX2WaitForVsync(void);
-
-
-struct in_addr {
-    unsigned int s_addr;
-};
-struct sockaddr_in {
-    short sin_family;
-    unsigned short sin_port;
-    struct in_addr sin_addr;
-    char sin_zero[8];
-};
-
-/* OS stuff */
-extern const long long title_id;
-extern void DCFlushRange(const void *p, unsigned int s);
-
-/* SDCard functions */
-extern FSStatus FSGetMountSource(void *pClient, void *pCmd, FSSourceType type, FSMountSource *source, FSRetFlag errHandling);
-extern FSStatus FSMount(void *pClient, void *pCmd, FSMountSource *source, char *target, uint bytes, FSRetFlag errHandling);
-extern FSStatus FSReadFile(FSClient *pClient, FSCmdBlock *pCmd, void *buffer, int size, int count, int fd, FSFlag flag, FSRetFlag errHandling);
-extern void FSInitCmdBlock(FSCmdBlock *pCmd);
-extern FSStatus FSCloseFile(FSClient *pClient, FSCmdBlock *pCmd, int fd, int error);
-
-/* Async callback definition */
-typedef void (*FSAsyncCallback)(void *pClient, void *pCmd, int result, void *context);
-typedef struct
-{
-    FSAsyncCallback userCallback;
-    void            *userContext;
-    void            *ioMsgQueue;
-} FSAsyncParams;
-
-/* Forward declarations */
-#define MAX_CLIENT 32
-
-struct bss_t {
-    int global_sock;
-    int socket_fs[MAX_CLIENT];
-    void *pClient_fs[MAX_CLIENT];
-    volatile int lock;
-    char mount_base[255];
-    char save_base[255];
-};
-
-#define bss_ptr (*(struct bss_t **)0x100000e4)
-#define bss (*bss_ptr)
-
-int  fs_connect(int *socket);
-void fs_disconnect(int socket);
-int  fs_mount_sd(int sock, void* pClient, void* pCmd);
-void log_string(int sock, const char* str, char byte);
-void log_byte(int sock, char byte);
+#ifndef __LOGGER_H_
+#define __LOGGER_H_
 
 /* Communication bytes with the server */
 // Com
@@ -141,4 +65,11 @@ void log_byte(int sock, char byte);
 
 #define BYTE_CREATE_THREAD              0x60
 
-#endif /* _FS_H */
+
+int  logger_connect(int *socket);
+void logger_disconnect(int socket);
+void log_string(int sock, const char* str, char byte);
+void log_byte(int sock, char byte);
+
+
+#endif

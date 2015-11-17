@@ -8,9 +8,6 @@ extern int LiLoadAsync(const char *filename, unsigned int address, unsigned int 
 extern int LiWaitIopComplete(int unknown_syscall_arg_r3, int * remaining_bytes);
 extern int LiWaitIopCompleteWithInterrupts(int unknown_syscall_arg_r3, int * remaining_bytes);
 
-extern int strncpy(char *dst, const char *src, int max_len);
-extern int strnlen(const char *src, int max_len);
-
 /* This are just addresses to the real functions which we only need as reference */
 extern int addr_LiBounceOneChunk(const char * filename, int fileType, int procId, int * hunkBytes, int fileOffset, int bufferNumber, int * dst_address);
 extern int addr_LiWaitOneChunk(unsigned int * iRemainingBytes, const char *filename, int fileType);
