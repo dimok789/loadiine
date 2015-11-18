@@ -1,5 +1,8 @@
 #include "menu.h"
+#include "../fs/fs.h"
 #include "../utils/strings.h"
+#include "../utils/rpx_sections.h"
+#include "../utils/logger.h"
 #include "../utils/utils.h"
 #include "../utils/xml.h"
 #include "../common/common.h"
@@ -9,12 +12,9 @@
 #define PRINT_TEXT2(x, y, _fmt, ...) { __os_snprintf(msg, 80, _fmt, __VA_ARGS__); OSScreenPutFontEx(1, x, y, msg); }
 #define BTN_PRESSED (BUTTON_LEFT | BUTTON_RIGHT | BUTTON_UP | BUTTON_DOWN | BUTTON_A | BUTTON_B | BUTTON_X)
 
-/* Function prototype to patch FS methods */
-void PatchFsMethods(void);
-
 /* Static function definitions */
-static int IsRPX(FSDirEntry *dir_entry);
-static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_entry, char *path, int is_rpx, int entry_index);
+static int IsRpxOrRpl(FSDirEntry *dir_entry);
+static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_entry, char *path, int is_rpx, int entry_index, char **rpl_imports, int rpl_import_count);
 static void CreateGameSaveDir(FSClient *pClient, FSCmdBlock *pCmd, const char *dir_entry, char* mount_path);
 static void GenerateMemoryAreasTable();
 static void AddMemoryArea(int start, int end, int cur_index);
@@ -269,24 +269,60 @@ int Menu_Main(int argc, char *argv[]) {
                         FSDirEntry dir_entry;
                         int is_okay = 0;
                         int cur_entry = 0;
+                        int rpx_found = 0;
+                        char **rpl_imports = NULL;
+                        int rpl_import_count = 0;
+                        char rpx_name[FS_MAX_MOUNTPATH_SIZE];
+                        memset(rpx_name, 0, sizeof(rpx_name));
+
+                        // first find and pre-load RPX into memory
                         while (FSReadDir(pClient, pCmd, game_dh, &dir_entry, FS_RET_ALL_ERROR) == FS_STATUS_OK)
                         {
-                            // Check if it is an rpx or rpl and copy it
-                            int is_rpx = IsRPX(&dir_entry);
-                            if (is_rpx == -1)
+                            int is_rpx = IsRpxOrRpl(&dir_entry);
+                            if (is_rpx != 1)
                                 continue;
 
-                            if (is_rpx)
+                            is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, 1, cur_entry, rpl_imports, rpl_import_count);
+                            cur_entry++;
+
+                            CreateGameSaveDir(pClient, pCmd, game_dir[game_sel], mount_path);
+                            rpx_found = 1;
+                            break;
+                        }
+
+                        // if the RPX is found rewind the whole DIR handler and start over loading all RPLs
+                        if(rpx_found && is_okay)
+                        {
+                            // copy the RPX name
+                            strlcpy(rpx_name, dir_entry.name, sizeof(rpx_name));
+                            // rewind dir handler
+                            FSRewindDir(pClient, pCmd, game_dh, FS_RET_NO_ERROR);
+                            // read out all RPL imports on the first entry which is the pre-loaded RPX
+                            rpl_import_count = GetRpxImports((s_rpx_rpl *)(RPX_RPL_ARRAY), &rpl_imports);
+
+                            while (FSReadDir(pClient, pCmd, game_dh, &dir_entry, FS_RET_ALL_ERROR) == FS_STATUS_OK)
                             {
-                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, 1, cur_entry++);
-                                CreateGameSaveDir(pClient, pCmd, game_dir[game_sel], mount_path);
+                                // Check if it is an rpx or rpl and copy it
+                                int is_rpx = IsRpxOrRpl(&dir_entry);
+                                if (is_rpx != 0)
+                                    continue;
+
+                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, 0, cur_entry, rpl_imports, rpl_import_count);
+                                if (is_okay == 0)
+                                    break;
+
+                                cur_entry++;
                             }
-                            else
-                            {
-                                is_okay = Copy_RPX_RPL(pClient, pCmd, &dir_entry, path, 0, cur_entry++);
+                        }
+
+                        // free memory of RPL imports
+                        if(rpl_imports) {
+                            int i;
+                            for(i = 0; i < rpl_import_count; i++) {
+                                if(rpl_imports[i])
+                                    free(rpl_imports[i]);
                             }
-                            if (is_okay == 0)
-                                break;
+                            free(rpl_imports);
                         }
 
                         // copy the game name to a place we know for later
@@ -300,7 +336,39 @@ int Menu_Main(int argc, char *argv[]) {
                         FSCloseDir(pClient, pCmd, game_dh, FS_RET_NO_ERROR);
 
                         if(ready){
-                            LoadXmlParameters(&cosAppXmlInfoStruct, pClient, pCmd, path, path_index);
+                            LoadXmlParameters(&cosAppXmlInfoStruct, pClient, pCmd, rpx_name, path, path_index);
+
+                            char acBuffer[200];
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "XML Launching Parameters");
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "rpx_name:        %s", cosAppXmlInfoStruct.rpx_name);
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "version_cos_xml: %i", cosAppXmlInfoStruct.version_cos_xml);
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "os_version:      %08X%08X", (unsigned int)(cosAppXmlInfoStruct.os_version >> 32), (unsigned int)(cosAppXmlInfoStruct.os_version & 0xFFFFFFFF));
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "title_id:        %08X%08X", (unsigned int)(cosAppXmlInfoStruct.title_id >> 32), (unsigned int)(cosAppXmlInfoStruct.title_id & 0xFFFFFFFF));
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "app_type:        %08X", cosAppXmlInfoStruct.app_type);
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "cmdFlags:        %08X", cosAppXmlInfoStruct.cmdFlags);
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "max_size:        %08X", cosAppXmlInfoStruct.max_size);
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "avail_size:      %08X", cosAppXmlInfoStruct.avail_size);
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "codegen_size:    %08X", cosAppXmlInfoStruct.codegen_size);
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "codegen_core:    %08X", cosAppXmlInfoStruct.codegen_core);
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "max_codesize:    %08X", cosAppXmlInfoStruct.max_codesize);
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "overlay_arena:   %08X", cosAppXmlInfoStruct.overlay_arena);
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "sdk_version:     %i", cosAppXmlInfoStruct.sdk_version);
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
+                            __os_snprintf(acBuffer, sizeof(acBuffer), "title_version:   %08X", cosAppXmlInfoStruct.title_version);
+                            log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
                         }
                     }
                 }
@@ -378,8 +446,8 @@ int Menu_Main(int argc, char *argv[]) {
     return main(argc, argv);
 }
 
-/* IsRPX */
-static int IsRPX(FSDirEntry *dir_entry)
+/* IsRpxOrRpl */
+static int IsRpxOrRpl(FSDirEntry *dir_entry)
 {
 	char *cPtr = dir_entry->name;
 	int len = 0;
@@ -399,7 +467,7 @@ static int IsRPX(FSDirEntry *dir_entry)
     return -1;
 }
 
-static void Add_RPX_RPL_Entry(const char *name, int size, int is_rpx, int entry_index, s_mem_area* area){
+static void Add_RPX_RPL_Entry(const char *name, int offset, int size, int is_rpx, int entry_index, s_mem_area* area){
     // fill rpx/rpl entry
     s_rpx_rpl * rpx_rpl_data = (s_rpx_rpl *)(RPX_RPL_ARRAY);
     // get to last entry
@@ -416,16 +484,19 @@ static void Add_RPX_RPL_Entry(const char *name, int size, int is_rpx, int entry_
     // setup current entry
     rpx_rpl_data->area = area;
     rpx_rpl_data->size = size;
-    rpx_rpl_data->offset = 0;
+    rpx_rpl_data->offset = offset;
     rpx_rpl_data->is_rpx = is_rpx;
     rpx_rpl_data->next = 0;
     // copy string length + 0 termination
     memcpy(rpx_rpl_data->name, name, strnlen(name, 0x1000) + 1);
 
+    char acBuffer[200];
+    __os_snprintf(acBuffer, sizeof(acBuffer), "%s: loaded into 0x%08X, offset: 0x%08X, size: 0x%08X", name, area->address, offset, size);
+    log_string(bss.global_sock, acBuffer, BYTE_LOG_STR);
 }
 
 /* Copy_RPX_RPL */
-static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_entry, char *path, int is_rpx, int entry_index)
+static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_entry, char *path, int is_rpx, int entry_index, char **rpl_imports, int rpl_import_count)
 {
     // Open rpl file
     int fd = 0;
@@ -439,12 +510,27 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
     // For RPLs :
     if(!is_rpx)
     {
-        // fill rpl entry
-        Add_RPX_RPL_Entry(dir_entry->name, 0, is_rpx, entry_index, (s_mem_area*)(MEM_AREA_ARRAY));
+        int preload = 0;
+        int i;
+        for(i = 0; i < rpl_import_count; i++)
+        {
+            if(strncasecmp(dir_entry->name, rpl_imports[i], strlen(dir_entry->name) - 4) == 0)
+            {
+                // file is in the fimports section and therefore needs to be preloaded
+                preload = 1;
+                break;
+            }
+        }
+        // if we dont need to preload, just add it to the array
+        if(!preload)
+        {
+            // fill rpl entry
+            Add_RPX_RPL_Entry(dir_entry->name, 0, 0, is_rpx, entry_index, (s_mem_area*)(MEM_AREA_ARRAY));
 
-        // free path
-        free(path_game);
-        return 1;
+            // free path
+            free(path_game);
+            return 1;
+        }
     }
 
     // For RPX : load file from sdcard and fill memory with the rpx data
@@ -456,12 +542,52 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
         // malloc mem for read file
         char* data = (char*)malloc(0x1000);
 
-        // Get current memory area limits
+        // this is the initial area
         s_mem_area* mem_area    = (s_mem_area*)(MEM_AREA_ARRAY);
-        s_mem_area* mem_area_rpl = mem_area;
         int mem_area_addr_start = mem_area->address;
         int mem_area_addr_end   = mem_area->address + mem_area->size;
         int mem_area_offset     = 0;
+
+        // on RPLs we need to find the free area we can store data to (at least RPX was already loaded by this point)
+        if(!is_rpx)
+        {
+            s_rpx_rpl *rpl_struct = (s_rpx_rpl*)(RPX_RPL_ARRAY);
+            while(rpl_struct != 0)
+            {
+                // check if this entry was loaded into memory
+                if(rpl_struct->size == 0) {
+                    // see if we find entries behind this one that was pre-loaded
+                    rpl_struct = rpl_struct->next;
+                    // entry was not loaded into memory -> skip it
+                    continue;
+                }
+
+                // this entry has been loaded to memory, remember it's area
+                mem_area = rpl_struct->area;
+
+                int rpl_size = rpl_struct->size;
+                int rpl_offset = rpl_struct->offset;
+                // find the end of the entry and switch between areas if needed
+                while((rpl_offset + rpl_size) >= mem_area->size)
+                {
+                    rpl_size -= mem_area->size - rpl_offset;
+                    rpl_offset = 0;
+                    mem_area = mem_area->next;
+                }
+
+                // set new start, end and memory area offset
+                mem_area_addr_start = mem_area->address;
+                mem_area_addr_end   = mem_area->address + mem_area->size;
+                mem_area_offset     = rpl_offset + rpl_size;
+
+                // see if we find entries behind this one that was pre-loaded
+                rpl_struct = rpl_struct->next;
+            }
+        }
+
+        // Get current memory area limits
+        s_mem_area* mem_area_rpl_start = mem_area;
+        int mem_area_offset_rpl_start = mem_area_offset;
 
         // Copy rpl in memory : 22 MB max
         while ((ret = FSReadFile(pClient, pCmd, data, 0x1, 0x1000, fd, 0, FS_RET_ALL_ERROR)) > 0)
@@ -483,12 +609,13 @@ static int Copy_RPX_RPL(FSClient *pClient, FSCmdBlock *pCmd, FSDirEntry *dir_ent
             cur_size += ret;
         }
 
+        // remember which RPX has to be checked for on loader for allowing the list compare
         if(is_rpx) {
             RPX_CHECK_NAME = *(unsigned int*)dir_entry->name;
         }
 
         // fill rpx entry
-        Add_RPX_RPL_Entry(dir_entry->name, cur_size, is_rpx, entry_index, mem_area_rpl);
+        Add_RPX_RPL_Entry(dir_entry->name, mem_area_offset_rpl_start, cur_size, is_rpx, entry_index, mem_area_rpl_start);
 
         // close file and free memory
         FSCloseFile(pClient, pCmd, fd, FS_RET_NO_ERROR);

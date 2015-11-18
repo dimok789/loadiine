@@ -13,6 +13,7 @@ int memcmp (const void * ptr1, const void * ptr2, unsigned int num);
 
 /* string functions */
 int strncasecmp(const char *s1, const char *s2, unsigned int max_len);
+int strncmp(const char *s1, const char *s2, unsigned int max_len);
 int strncpy(char *dst, const char *src, unsigned int max_size);
 int strlcpy(char *s1, const char *s2, unsigned int max_size);
 int strnlen(const char* str, unsigned int max_size);

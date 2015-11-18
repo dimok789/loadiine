@@ -1,5 +1,6 @@
-#include "../Common/fs_defs.h"
-#include "../Common/kernel_defs.h"
+#include "../common/fs_defs.h"
+#include "../common/kernel_defs.h"
+#include "../fs/fs_functions.h"
 #include "../menu/menu.h"
 #include "utils.h"
 #include "strings.h"
@@ -46,18 +47,18 @@ char * XML_GetNodeText(const char *xml_part, const char * nodename, char * outpu
     return output;
 }
 
-int LoadXmlParameters(ReducedCosAppXmlInfo * xmlInfo, FSClient *pClient, FSCmdBlock *pCmd, const char *path, int path_index)
+int LoadXmlParameters(ReducedCosAppXmlInfo * xmlInfo, FSClient *pClient, FSCmdBlock *pCmd, const char *rpx_name, const char *path, int path_index)
 {
     //--------------------------------------------------------------------------------------------
     // setup default data
     //--------------------------------------------------------------------------------------------
     memset(xmlInfo, 0, sizeof(ReducedCosAppXmlInfo));
-    xmlInfo->version_cos_xml = 18;                  // default for most games
-    xmlInfo->os_version = 0x000500101000400A;   // default for most games
-    xmlInfo->title_id = title_id;               // use mii maker ID
-    xmlInfo->app_type = 0x80000000;             // default for most games
-    xmlInfo->cmdFlags = 0;                      // default for most games
-    strlcpy(xmlInfo->rpx_name, "ffl_app.rpx", sizeof(xmlInfo->rpx_name));
+    xmlInfo->version_cos_xml = 18;             // default for most games
+    xmlInfo->os_version = 0x000500101000400A;  // default for most games
+    xmlInfo->title_id = title_id;              // use mii maker ID
+    xmlInfo->app_type = 0x80000000;            // default for most games
+    xmlInfo->cmdFlags = 0;                     // default for most games
+    strlcpy(xmlInfo->rpx_name, rpx_name, sizeof(xmlInfo->rpx_name));
     xmlInfo->max_size = 0x40000000;            // default for most games
     xmlInfo->avail_size = 0;                   // default for most games
     xmlInfo->codegen_size = 0;                 // default for most games
@@ -116,10 +117,11 @@ int LoadXmlParameters(ReducedCosAppXmlInfo * xmlInfo, FSClient *pClient, FSCmdBl
                 unsigned int value = strtoll(xmlNodeData, 0, 10);
                 xmlInfo->cmdFlags = value;
             }
-            if(XML_GetNodeText(xmlData, "argstr", xmlNodeData, XML_BUFFER_SIZE))
-            {
-                strlcpy(xmlInfo->rpx_name, xmlNodeData, sizeof(xmlInfo->rpx_name));
-            }
+            // always use RPX name from FS
+            //if(XML_GetNodeText(xmlData, "argstr", xmlNodeData, XML_BUFFER_SIZE))
+            //{
+            //    strlcpy(xmlInfo->rpx_name, xmlNodeData, sizeof(xmlInfo->rpx_name));
+            //}
             if(XML_GetNodeText(xmlData, "avail_size", xmlNodeData, XML_BUFFER_SIZE))
             {
                 unsigned int value = strtoll(xmlNodeData, 0, 16);

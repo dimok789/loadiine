@@ -154,8 +154,6 @@ KernelPatches:
     lis r4, 0x48AE
     ori r4, r4, 0x105A
     stw r4, 0(r3)
-    eieio
-    isync
 
     # memory barrier
     eieio

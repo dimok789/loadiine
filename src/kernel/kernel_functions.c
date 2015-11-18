@@ -27,9 +27,8 @@ void my_PrepareTitle(CosAppXmlInfo *xmlKernelInfo)
     asm volatile("eieio; isync");
 
 
-    //! TODO: add Smash Bros IDs for the check?
-    // check for Mii Maker ID (region independent check)
-    if(GAME_LAUNCHED && (xmlKernelInfo->title_id & 0xFFFFFFFFFFFFF0FF) == 0x000500101004A000)
+    // check for Mii Maker RPX or Smash Bros RPX when we started (region independent check)
+    if(GAME_LAUNCHED && ((strncasecmp("ffl_app.rpx", xmlKernelInfo->rpx_name, FS_MAX_ENTNAME_SIZE) == 0) || (strncasecmp("cross_f.rpx", xmlKernelInfo->rpx_name, FS_MAX_ENTNAME_SIZE) == 0)))
     {
         //! Copy all data from the parsed XML info
         strlcpy(xmlKernelInfo->rpx_name, cosAppXmlInfoStruct.rpx_name, sizeof(cosAppXmlInfoStruct.rpx_name));

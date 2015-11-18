@@ -61,20 +61,10 @@ static int is_gamefile(const char *path) {
     }
 
     /* Note : no need to check everything, it is faster this way */
-    if (new_path[0]  != '/') return 0;
-    if (new_path[1]  != 'v' && new_path[1] != 'V') return 0;
-//    if (new_path[2]  != 'o') return 0;
-//    if (new_path[3]  != 'l') return 0;
-//    if (new_path[4]  != '/') return 0;
-    if (new_path[5]  != 'c' && new_path[5] != 'C') return 0;
-//    if (new_path[6]  != 'o') return 0;
-//    if (new_path[7]  != 'n') return 0;
-//    if (new_path[8]  != 't') return 0;
-//    if (new_path[9]  != 'e') return 0;
-//    if (new_path[10] != 'n') return 0;
-    if (new_path[11] != 't' && new_path[11] != 'T') return 0;
+    if (strncasecmp(new_path, "/vol/content", 12) == 0)
+        return 1;
 
-    return 1;
+    return 0;
 }
 static int is_savefile(const char *path) {
 
@@ -94,18 +84,10 @@ static int is_savefile(const char *path) {
         new_path[len++] = *path++;
     }
 
-    /* Note : no need to check everything, it is faster this way */
-    if (new_path[0]  != '/') return 0;
-//    if (new_path[1]  != 'v' && new_path[1] != 'V') return 0;
-//    if (new_path[2]  != 'o') return 0;
-//    if (new_path[3]  != 'l') return 0;
-    if (new_path[4]  != '/') return 0;
-    if (new_path[5]  != 's' && new_path[5] != 'S') return 0;
-//    if (new_path[6]  != 'a') return 0;
-//    if (new_path[7]  != 'v') return 0;
-    if (new_path[8]  != 'e' && new_path[8] != 'E') return 0;
+    if (strncasecmp(new_path, "/vol/save", 9) == 0)
+        return 1;
 
-    return 1;
+    return 0;
 }
 
 static void compute_new_path(char* new_path, const char* path, int len, int is_save) {
@@ -118,6 +100,11 @@ static void compute_new_path(char* new_path, const char* path, int len, int is_s
     // In case the path does not start with "/" set an offset for all the accesses
 	if(path[0] != '/')
 		path_offset = -1;
+
+    // some games are doing /vol/content/./....
+    if(path[13 + path_offset] == '.' && path[14 + path_offset] == '/') {
+        path_offset += 2;
+    }
 
     if (!is_save) {
         n = strlcpy(new_path, bss.mount_base, sizeof(bss.mount_base));
@@ -273,7 +260,7 @@ DECL(int, FSDelClient, void *pClient) {
 /* *****************************************************************************
  * Replacement functions
  * ****************************************************************************/
-DECL(int, FSGetStat, void *pClient, void *pCmd, const char *path, void *stats, int error) {
+DECL(int, FSGetStat, FSClient *pClient, FSCmdBlock *pCmd, const char *path, FSStat *stats, FSRetFlag error) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -316,7 +303,7 @@ DECL(int, FSGetStatAsync, void *pClient, void *pCmd, const char *path, void *sta
     return real_FSGetStatAsync(pClient, pCmd, path, stats, error, asyncParams);
 }
 
-DECL(int, FSOpenFile, void *pClient, void *pCmd, const char *path, const char *mode, int *handle, int error) {
+DECL(FSStatus, FSOpenFile, FSClient *pClient, FSCmdBlock *pCmd, const char *path, const char *mode, int *handle, FSRetFlag error) {
 /*
     int client = GetCurClient(pClient);
     if (client != -1) {
@@ -359,7 +346,7 @@ DECL(int, FSOpenFileAsync, void *pClient, void *pCmd, const char *path, const ch
     return real_FSOpenFileAsync(pClient, pCmd, path, mode, handle, error, asyncParams);
 }
 
-DECL(int, FSOpenDir, void *pClient, void* pCmd, const char *path, int *handle, int error) {
+DECL(int, FSOpenDir, FSClient *pClient, FSCmdBlock* pCmd, const char *path, int *handle, FSRetFlag error) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -399,7 +386,7 @@ DECL(int, FSOpenDirAsync, void *pClient, void* pCmd, const char *path, int *hand
     return real_FSOpenDirAsync(pClient, pCmd, path, handle, error, asyncParams);
 }
 
-DECL(int, FSChangeDir, void *pClient, void *pCmd, char *path, int error) {
+DECL(FSStatus, FSChangeDir, FSClient *pClient, FSCmdBlock *pCmd, const char *path, FSRetFlag error) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -440,7 +427,7 @@ DECL(int, FSChangeDirAsync, void *pClient, void *pCmd, const char *path, int err
 }
 
 // only for saves on sdcard
-DECL(int, FSMakeDir, void *pClient, void *pCmd, const char *path, int error) {
+DECL(FSStatus, FSMakeDir, FSClient *pClient, FSCmdBlock *pCmd, const char *path, FSRetFlag error) {
     int client = GetCurClient(pClient);
     if (client != -1) {
         // log
@@ -1070,29 +1057,26 @@ const struct fs_magic_t {
     // Dynamic RPL loading functions
     MAKE_MAGIC(OSDynLoad_Acquire,           0x38A00000),
 #if (USE_EXTRA_LOG_FUNCTIONS == 1)
-    MAKE_MAGIC(OSDynLoad_GetModuleName),
-    MAKE_MAGIC(OSDynLoad_IsModuleLoaded),
-#endif
+    MAKE_MAGIC(OSDynLoad_GetModuleName,     0x9421FFD0),
+    MAKE_MAGIC(OSDynLoad_IsModuleLoaded,    0x38A00001),
 
-    // Log functions
-#if (USE_EXTRA_LOG_FUNCTIONS == 1)
-    MAKE_MAGIC(FSCloseFile_log),
-    MAKE_MAGIC(FSCloseDir_log),
-    MAKE_MAGIC(FSFlushFile_log),
-    MAKE_MAGIC(FSGetErrorCodeForViewer_log),
-    MAKE_MAGIC(FSGetLastError_log),
-    MAKE_MAGIC(FSGetPosFile_log),
-    MAKE_MAGIC(FSGetStatFile_log),
-    MAKE_MAGIC(FSIsEof_log),
-    MAKE_MAGIC(FSReadDir_log),
-    MAKE_MAGIC(FSReadFile_log),
-    MAKE_MAGIC(FSReadFileWithPos_log),
-    MAKE_MAGIC(FSSetPosFile_log),
-    MAKE_MAGIC(FSSetStateChangeNotification_log),
-    MAKE_MAGIC(FSTruncateFile_log),
-    MAKE_MAGIC(FSWriteFile_log),
-    MAKE_MAGIC(FSWriteFileWithPos_log),
-    MAKE_MAGIC(FSGetVolumeState_log),
+    MAKE_MAGIC(FSCloseFile_log,             0x7C0802A6),
+    MAKE_MAGIC(FSCloseDir_log,              0x7C0802A6),
+    MAKE_MAGIC(FSFlushFile_log,             0x7C0802A6),
+    MAKE_MAGIC(FSGetErrorCodeForViewer_log, 0x9421FEF8),
+    MAKE_MAGIC(FSGetLastError_log,          0x7C0802A6),
+    MAKE_MAGIC(FSGetPosFile_log,            0x9421FFD8),
+    MAKE_MAGIC(FSGetStatFile_log,           0x9421FFD8),
+    MAKE_MAGIC(FSIsEof_log,                 0x7C0802A6),
+    MAKE_MAGIC(FSReadDir_log,               0x9421FFD8),
+    MAKE_MAGIC(FSReadFile_log,              0x9421FFC8),
+    MAKE_MAGIC(FSReadFileWithPos_log,       0x9421FFC0),
+    MAKE_MAGIC(FSSetPosFile_log,            0x9421FFD8),
+    MAKE_MAGIC(FSSetStateChangeNotification_log, 0x7C0802A6),
+    MAKE_MAGIC(FSTruncateFile_log,          0x7C0802A6),
+    MAKE_MAGIC(FSWriteFile_log,             0x9421FFC8),
+    MAKE_MAGIC(FSWriteFileWithPos_log,      0x9421FFC0),
+    MAKE_MAGIC(FSGetVolumeState_log,        0x7C0802A6),
 #endif
 };
 

@@ -1,7 +1,7 @@
 #ifndef COMMON_H
 #define	COMMON_H
 
-#define LOADIINE_VERSION        "v3.0"
+#define LOADIINE_VERSION        "v4.0"
 #define IS_USING_MII_MAKER      1
 
 /* Loadiine common paths */

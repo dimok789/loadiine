@@ -2,27 +2,12 @@
 #define _FS_H_
 
 #include "../common/fs_defs.h"
+#include "fs_functions.h"
 
 extern void GX2WaitForVsync(void);
 
 /* OS stuff */
 extern void DCFlushRange(const void *p, unsigned int s);
-
-/* SDCard functions */
-extern FSStatus FSGetMountSource(void *pClient, void *pCmd, FSSourceType type, FSMountSource *source, FSRetFlag errHandling);
-extern FSStatus FSMount(void *pClient, void *pCmd, FSMountSource *source, char *target, uint bytes, FSRetFlag errHandling);
-extern FSStatus FSReadFile(FSClient *pClient, FSCmdBlock *pCmd, void *buffer, int size, int count, int fd, FSFlag flag, FSRetFlag errHandling);
-extern void FSInitCmdBlock(FSCmdBlock *pCmd);
-extern FSStatus FSCloseFile(FSClient *pClient, FSCmdBlock *pCmd, int fd, int error);
-
-/* Async callback definition */
-typedef void (*FSAsyncCallback)(void *pClient, void *pCmd, int result, void *context);
-typedef struct
-{
-    FSAsyncCallback userCallback;
-    void            *userContext;
-    void            *ioMsgQueue;
-} FSAsyncParams;
 
 /* Forward declarations */
 #define MAX_CLIENT 32

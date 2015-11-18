@@ -76,6 +76,7 @@ PROVIDE(FSRollbackQuotaAsync = 0x0106bb50);
 
 /* FS methods - not replaced */
 PROVIDE(FSReadDir = 0x0106f780);
+PROVIDE(FSRewindDir = 0x0106F7F0);
 PROVIDE(FSReadFile = 0x106f108);
 PROVIDE(FSCloseFile = 0x106f088);
 PROVIDE(FSCloseDir = 0x0106f700);

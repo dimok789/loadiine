@@ -110,6 +110,36 @@ int strncasecmp(const char *s1, const char *s2, unsigned int max_len) {
 }
 
 
+int strncmp(const char *s1, const char *s2, unsigned int max_len) {
+    if(!s1 || !s2) {
+        return -1;
+    }
+
+    unsigned int len = 0;
+    while(*s1 && *s2 && len < max_len)
+    {
+        int diff = *s1 - *s2;
+        if(diff != 0) {
+            return diff;
+        }
+
+        s1++;
+        s2++;
+        len++;
+    }
+
+    if(len == max_len) {
+        return 0;
+    }
+
+    int diff = *s1 - *s2;
+    if(diff != 0) {
+        return diff;
+    }
+    return 0;
+}
+
+
 const char *strcasestr(const char *str, const char *pattern)
 {
     if(!str || !pattern) {
