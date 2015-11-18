@@ -28,7 +28,7 @@ main532:
 	rm $(root)/*.o
 	$(LD) $(LDFLAGS) -s -o $(build)/code532.bin $(build)/launcher.o `find $(build) -name "*.o" ! -name "launcher.o"`
 	cp -rf ../*.elf $(www_loadiine)
-	cp -rf ../*.elf ../www/
+	cp -rf ../*.elf ../www/loadiine
 
 clean:
 	rm -rf $(build)

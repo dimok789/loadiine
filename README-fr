@@ -5,7 +5,7 @@
 /*                 | |     ___   __ _  __| |_ _ _ __   ___                    */
 /*                 | |    / _ \ / _` |/ _` | | | '_ \ / _ \                   */
 /*                 | |___| (_) | (_| | (_| | | | | | |  __/                   */
-/*                 ______/\___/ \__,_|\__,_|_|_|_| |_|\___| v3.0              */
+/*                 ______/\___/ \__,_|\__,_|_|_|_| |_|\___| v4.0              */
 /*                                                                            */
 /*                  Remplacement de fichiers et de RPX/RPL                    */
 /*                                                                            */
@@ -23,7 +23,7 @@
 
 - WiiU FW 5.3.2
 - Carte SD(HC)
-- Le disque de Super Smash Bros (ou la version EShop) - optionnel mais fournit une meilleure compatibilité
+- Le disque de Super Smash Bros (ou la version EShop) - optionnel mais peut être nécessaire pour certains jeux
 
 
 /******************************************************************************/
@@ -77,17 +77,14 @@ Préparation des fichiers RPX/RPL et des données
 3. Dans "games", créez un nouveau dossier avec le nom de votre application
     - ex : SDCARD/wiiu/games/MyApplication/
 
-3. Dans ce dossier, créez un dossier "code"
-    - ex : SDCARD/wiiu/games/MyApplication/code
-
-4. Copiez dans ce dossier le fichier RPX de votre application
-    - ex : SDCARD/wiiu/games/MyApplication/code/my_application.rpx
-
-5. Copier également dans ce dossier les fichiers RPL de votre application
-    - ex : SDCARD/_wiiu/games/MyApplication/code/library1.rpl
-    - ex : SDCARD/_wiiu/games/MyApplication/code/library2.rpl
-
-6. Enfin, copiez le dossier "content" de votre jeu/homebrew dans le répertoire de votre application sur la carte SD
+4. Copiez le dossier "code" de votre jeu/homebrew dans le répertoire de votre application sur la carte SD (avec l'ensemble des fichiers rpx, rpl et xml)
+	- ex : SDCARD/wiiu/games/MyApplicatin/code/my_application.rpx
+	- ex : SDCARD/wiiu/games/MyApplicatin/code/my_application_library.rpl
+	- ex : SDCARD/wiiu/games/MyApplicatin/code/app.xml
+	- ex : SDCARD/wiiu/games/MyApplicatin/code/cos.xml
+	- note : si vous n'avez pas les fichiers xml, loadiine essayera d'utiliser des valeurs par défaut à la place
+	
+5. Copiez le dossier "content" de votre jeu/homebrew dans le répertoire de votre application sur la carte SD
     - ex : SDCARD/wiiu/games/MyApplication/content/...
     - ex : H:/MyApplication/vol/content/data.bin -> SDCARD/wiiu/games/MyApplication/content/data.bin
     - ex : H:/MyApplication/vol/content/datab/datab.bin -> SDCARD/wiiu/games/MyApplication/content/datab/datab.bin
@@ -102,6 +99,8 @@ La structure de la carte SD doit ressembler à ça après avoir suivit les étap
 
 - SDCARD/wiiu/games/MyApplication/code/my_application.rpx
 - SDCARD/wiiu/games/MyApplication/code/*.rpl [only if application contains .rpl files]
+- SDCARD/wiiu/games/MyApplication/code/app.xml
+- SDCARD/wiiu/games/MyApplication/code/cos.xml
 - SDCARD/wiiu/games/MyApplication/content/[content files/folders]
 
 

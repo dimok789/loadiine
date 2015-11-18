@@ -5,7 +5,7 @@
 /*                 | |     ___   __ _  __| |_ _ _ __   ___                    */
 /*                 | |    / _ \ / _` |/ _` | | | '_ \ / _ \                   */
 /*                 | |___| (_) | (_| | (_| | | | | | |  __/                   */
-/*                 ______/\___/ \__,_|\__,_|_|_|_| |_|\___| v3.0              */
+/*                 ______/\___/ \__,_|\__,_|_|_|_| |_|\___| v4.0              */
 /*                                                                            */
 /*                    RPX/RPL and File Replacement Tool                       */
 /*                                                                            */
@@ -23,7 +23,7 @@
 
 - Wii U FW 5.3.2
 - SD(HC) Card
-- Super Smash Bros for Wii U (Disc or EShop version) - optional but provides better compatibility
+- Super Smash Bros for Wii U (Disc or EShop version) - optional but may be needed for some games
 
 
 /******************************************************************************/
@@ -32,7 +32,7 @@
 
 - 1. Setup your SD Card (see below)
 
-- 2. In the Internet Browser, Launch the included kernel exploit (www/kexploit)
+- 2. In the Internet Browser, launch the included kernel exploit (www/kexploit)
 (You need a modified kernel exploit that sets 0xA0000000 virtual memory range to 0x10000000 physical memory address)
 
 - 3. Relaunch the Internet Browser
@@ -74,20 +74,17 @@ Setting Up RPX/RPL and Data Files
 2. In "wiiu", create another folder named "games"
     - ex : SDCARD/wiiu/games
 
-2. In "games", create a new folder with the name of your app
+3. In "games", create a new folder with the name of your app
     - ex : SDCARD/wiiu/games/MyApplication/
 
-3. In this folder, create a folder named "code"
-    - ex : SDCARD/wiiu/games/MyApplication/code
+4. Copy the "code" folder of your app/game inside your application folder (with rpx, rpl and xml files)
+	- ex : SDCARD/wiiu/games/MyApplicatin/code/my_application.rpx
+	- ex : SDCARD/wiiu/games/MyApplicatin/code/my_application_library.rpl
+	- ex : SDCARD/wiiu/games/MyApplicatin/code/app.xml
+	- ex : SDCARD/wiiu/games/MyApplicatin/code/cos.xml
+	- note : if you don't have the xml files, loadiine will try to use default values instead
 
-4. Copy the game/homebrew RPX file in the "code" folder
-    - ex : SDCARD/wiiu/games/MyApplication/code/my_application.rpx
-
-5. Copy the game/homebrew RPL files in the "code" folder too
-    - ex : SDCARD/_wiiu/games/MyApplication/code/library1.rpl
-    - ex : SDCARD/_wiiu/games/MyApplication/code/library2.rpl
-
-6. Copy the "content" folder of your app/game inside your application folder
+5. Copy the "content" folder of your app/game inside your application folder
     - ex : SDCARD/wiiu/games/MyApplication/content/...
     - ex : H:/MyApplication/vol/content/data.bin -> SDCARD/wiiu/games/MyApplication/content/data.bin
     - ex : H:/MyApplication/vol/content/datab/datab.bin -> SDCARD/wiiu/games/MyApplication/content/datab/datab.bin
@@ -102,6 +99,8 @@ Your file structure should look like this if the above information was used :
 
 - SDCARD/wiiu/games/MyApplication/code/my_application.rpx
 - SDCARD/wiiu/games/MyApplication/code/*.rpl [only if application contains .rpl files]
+- SDCARD/wiiu/games/MyApplication/code/app.xml
+- SDCARD/wiiu/games/MyApplication/code/cos.xml
 - SDCARD/wiiu/games/MyApplication/content/[content files/folders]
 
 
