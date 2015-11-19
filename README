@@ -11,11 +11,11 @@
 /*                                                                            */
 /******************************************************************************/
 
-- 1......Requirements 
+- 1......Requirements
 
-- 2......How to Use 
+- 2......How to Use
 
-- 3......Preparing the SD Card 
+- 3......Preparing the SD Card
 
 /******************************************************************************/
 /*                              Requirements                                  */
@@ -78,10 +78,10 @@ Setting Up RPX/RPL and Data Files
     - ex : SDCARD/wiiu/games/MyApplication/
 
 4. Copy the "code" folder of your app/game inside your application folder (with rpx, rpl and xml files)
-	- ex : SDCARD/wiiu/games/MyApplicatin/code/my_application.rpx
-	- ex : SDCARD/wiiu/games/MyApplicatin/code/my_application_library.rpl
-	- ex : SDCARD/wiiu/games/MyApplicatin/code/app.xml
-	- ex : SDCARD/wiiu/games/MyApplicatin/code/cos.xml
+	- ex : SDCARD/wiiu/games/MyApplication/code/my_application.rpx
+	- ex : SDCARD/wiiu/games/MyApplication/code/my_application_library.rpl
+	- ex : SDCARD/wiiu/games/MyApplication/code/app.xml
+	- ex : SDCARD/wiiu/games/MyApplication/code/cos.xml
 	- note : if you don't have the xml files, loadiine will try to use default values instead
 
 5. Copy the "content" folder of your app/game inside your application folder
