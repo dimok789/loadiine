@@ -22,6 +22,7 @@
 /******************************************************************************/
 
 - WiiU FW 5.3.2
+- Pour d'autre FW,il vous faudra attendre un portage de loadiine.Cela reste possible si votre Wii U à un exploit kernel et webkit.Regarder http://rhcafe.us.to/ pout un bon tableau.
 - Carte SD(HC)
 - Le disque de Super Smash Bros (ou la version EShop) - optionnel mais peut être nécessaire pour certains jeux
 
@@ -78,12 +79,12 @@ Préparation des fichiers RPX/RPL et des données
     - ex : SDCARD/wiiu/games/MyApplication/
 
 4. Copiez le dossier "code" de votre jeu/homebrew dans le répertoire de votre application sur la carte SD (avec l'ensemble des fichiers rpx, rpl et xml)
-	- ex : SDCARD/wiiu/games/MyApplicatin/code/my_application.rpx
-	- ex : SDCARD/wiiu/games/MyApplicatin/code/my_application_library.rpl
-	- ex : SDCARD/wiiu/games/MyApplicatin/code/app.xml
-	- ex : SDCARD/wiiu/games/MyApplicatin/code/cos.xml
+	- ex : SDCARD/wiiu/games/MyApplication/code/my_application.rpx
+	- ex : SDCARD/wiiu/games/MyApplication/code/my_application_library.rpl
+	- ex : SDCARD/wiiu/games/MyApplication/code/app.xml
+	- ex : SDCARD/wiiu/games/MyApplication/code/cos.xml
 	- note : si vous n'avez pas les fichiers xml, loadiine essayera d'utiliser des valeurs par défaut à la place
-	
+
 5. Copiez le dossier "content" de votre jeu/homebrew dans le répertoire de votre application sur la carte SD
     - ex : SDCARD/wiiu/games/MyApplication/content/...
     - ex : H:/MyApplication/vol/content/data.bin -> SDCARD/wiiu/games/MyApplication/content/data.bin
